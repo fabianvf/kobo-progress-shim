@@ -1,0 +1,6 @@
+{
+  "cmd/kobo-capture/main.go": "82360d5a8ca80401b02c6ffd6926683232bb16d5098de2fb8947c1ad8bbd7701",
+  "internal/capture/proxy.go": "078a516ea512193bf97320163bb421c5b70c1c6690c7f0a42a9ac670696eb964",
+  "internal/capture/recorder.go": "7ddc1736ae78bd82814d18ca8e77c58e538395c3bc29cdf769a7c46194365b9d",
+  "internal/capture/redact.go": "ff6e5594d157a764d199cc321744662523c20b0b5cb93e796b3e632c62d8750c"
+}

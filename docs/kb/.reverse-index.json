@@ -1,0 +1,37 @@
+{
+ "_generated_by": "kb graph --write",
+ "_what": "source path -> {articles that document it, tests that exercise it}. Answers \"I touched this file: what do I read, and where do the test updates go?\" `tests` is derived from real imports and exact stem reconstruction, never filename similarity. `articleTests` lists the subsystem-level guards each article names, which no single file imports. Generated: do not hand-edit.",
+ "owners": {
+  "cmd/kobo-capture/main.go": {
+   "articles": [
+    "arch-capture"
+   ],
+   "tests": []
+  },
+  "internal/capture/proxy.go": {
+   "articles": [
+    "arch-capture"
+   ],
+   "tests": [
+    "internal/capture/proxy_test.go"
+   ]
+  },
+  "internal/capture/recorder.go": {
+   "articles": [
+    "arch-capture"
+   ],
+   "tests": [
+    "internal/capture/proxy_test.go"
+   ]
+  },
+  "internal/capture/redact.go": {
+   "articles": [
+    "arch-capture"
+   ],
+   "tests": [
+    "internal/capture/proxy_test.go"
+   ]
+  }
+ },
+ "articleTests": {}
+}

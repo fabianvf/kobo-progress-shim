@@ -1,0 +1,8 @@
+# Only Go ships. Dockerfile and the workflows are small and change rarely, so
+# they stay out of the orphan ratchet for now.
+prod_roots: [cmd, internal]
+prod_extensions: [.go]
+test_rules:
+  base_suffixes: [_test.go]
+link_commands:
+  - command: [kb, imports, go]
