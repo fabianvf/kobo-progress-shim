@@ -39,7 +39,7 @@ Sizes are estimates (4 chars/token). `->` is an outbound edge; `gated by` must b
 
 ## arch-matching
 
-`article` · ~769 tokens
+`article` · ~844 tokens
 
 - owns: cmd/match-eval/**, internal/dryrun/**, internal/hardcover/**, internal/kobostore/**, internal/match/**
 - -> arch-capture, arch-kobo-traffic

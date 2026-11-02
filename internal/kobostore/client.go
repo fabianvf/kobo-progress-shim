@@ -34,9 +34,10 @@ func New() *Client {
 	return &Client{baseURL: baseURL, http: &http.Client{Timeout: 15 * time.Second}}
 }
 
-// Metadata fetches a book by entitlement id. CWA's own books aren't in the
-// store, so they return ErrNotFound. Errors never include the auth header.
-func (c *Client) Metadata(ctx context.Context, id, authorization, userAgent string) (Metadata, error) {
+// Metadata fetches a book by entitlement id, sending the device's headers. CWA's
+// own books aren't in the store, so they should return ErrNotFound. Errors
+// include the store's own error text but never the headers sent.
+func (c *Client) Metadata(ctx context.Context, id string, device http.Header) (Metadata, error) {
 	if !entitlementID.MatchString(id) {
 		return Metadata{}, fmt.Errorf("kobostore: invalid id")
 	}
@@ -44,9 +45,8 @@ func (c *Client) Metadata(ctx context.Context, id, authorization, userAgent stri
 	if err != nil {
 		return Metadata{}, err
 	}
-	req.Header.Set("Authorization", authorization)
+	req.Header = device.Clone()
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", userAgent)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return Metadata{}, err
@@ -56,7 +56,7 @@ func (c *Client) Metadata(ctx context.Context, id, authorization, userAgent stri
 	case resp.StatusCode == http.StatusNotFound:
 		return Metadata{}, ErrNotFound
 	case resp.StatusCode != http.StatusOK:
-		return Metadata{}, fmt.Errorf("kobostore: status %d", resp.StatusCode)
+		return Metadata{}, statusError(resp)
 	}
 	var books []Metadata
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&books); err != nil {
@@ -66,4 +66,21 @@ func (c *Client) Metadata(ctx context.Context, id, authorization, userAgent stri
 		return Metadata{}, ErrNotFound
 	}
 	return books[0], nil
+}
+
+// statusError keeps only the store's error code and message, so an unexpected
+// body can't put anything else in the logs.
+func statusError(resp *http.Response) error {
+	var body struct {
+		ResponseStatus struct {
+			ErrorCode string `json:"ErrorCode"`
+			Message   string `json:"Message"`
+		} `json:"ResponseStatus"`
+	}
+	json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&body)
+	message := body.ResponseStatus.Message
+	if len(message) > 200 {
+		message = message[:200]
+	}
+	return fmt.Errorf("kobostore: status %d, server %q, %s: %s", resp.StatusCode, resp.Header.Get("Server"), body.ResponseStatus.ErrorCode, message)
 }

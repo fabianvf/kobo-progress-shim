@@ -19,7 +19,7 @@ func stateExchange(method, uri string, status int, body string) *Exchange {
 		Method:        method,
 		RequestURI:    uri,
 		Status:        status,
-		RequestHeader: http.Header{"Authorization": {"Bearer " + secret}, "User-Agent": {"kobo"}},
+		RequestHeader: http.Header{"Authorization": {"Bearer " + secret}, "User-Agent": {"kobo"}, "X-Kobo-Deviceid": {"d"}, "X-Forwarded-For": {"1.2.3.4"}, "Content-Length": {"9"}, "Cookie": {"session=cwa"}, "Accept-Encoding": {"gzip"}, "X-New-Header": {"kept"}},
 		RequestBody:   request,
 		ResponseBody:  &cappedBuffer{},
 	}
@@ -32,8 +32,18 @@ func TestProgressFromStatePut(t *testing.T) {
 	}
 	p := got[0]
 	if p.Percent != 6 || p.Status != "Reading" || p.LastModified != "2026-11-02T15:23:39Z" ||
-		p.Source != "OEBPS/text/9780061801150_Bodymatter.xhtml" || p.Authorization != "Bearer "+secret {
+		p.Source != "OEBPS/text/9780061801150_Bodymatter.xhtml" {
 		t.Fatalf("wrong event for %s: %d %s", p.EntitlementID, p.Percent, p.Status)
+	}
+	for _, name := range []string{"Authorization", "X-Kobo-Deviceid", "User-Agent", "X-New-Header"} {
+		if p.Headers.Get(name) == "" {
+			t.Errorf("%s not kept", name)
+		}
+	}
+	for _, name := range []string{"X-Forwarded-For", "Content-Length", "Cookie", "Accept-Encoding"} {
+		if p.Headers.Get(name) != "" {
+			t.Errorf("%s kept", name)
+		}
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"net/http"
 	"sync"
 	"time"
 
@@ -19,7 +20,7 @@ const queueSize = 64
 
 // Store is the Kobo metadata lookup.
 type Store interface {
-	Metadata(ctx context.Context, id, authorization, userAgent string) (kobostore.Metadata, error)
+	Metadata(ctx context.Context, id string, device http.Header) (kobostore.Metadata, error)
 }
 
 // Entry is one log line. It has no auth field, so it is safe to marshal whole.
@@ -103,7 +104,7 @@ func (w *Worker) identify(ctx context.Context, p capture.Progress) Entry {
 	complete := true
 
 	signals := match.Signals{}
-	meta, err := w.store.Metadata(ctx, p.EntitlementID, p.Authorization, p.UserAgent)
+	meta, err := w.store.Metadata(ctx, p.EntitlementID, p.Headers)
 	switch {
 	case err == nil:
 		entry.LookupResult = "found"

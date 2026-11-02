@@ -3,20 +3,38 @@ package capture
 import (
 	"encoding/json"
 	"log"
+	"net/http"
 	"regexp"
+	"strings"
 )
 
-// Progress is one book's state from a successful state PUT. Authorization is
-// the Kobo's own header, for a store lookup in memory. It must never be logged
-// or stored, so don't print this struct whole.
+// Progress is one book's state from a successful state PUT. Headers holds the
+// Kobo's own auth, for a store lookup in memory. It must never be logged or
+// stored, so don't print this struct whole.
 type Progress struct {
 	EntitlementID string
 	Percent       int
 	Status        string
 	Source        string
 	LastModified  string
-	Authorization string
-	UserAgent     string
+	Headers       http.Header
+}
+
+// deviceHeaders keeps everything the device sent, as CWA does when it forwards a
+// request to the store, except what describes the hop to this proxy, CWA's own
+// session, or the PUT's body. Accept-Encoding goes too, because setting it would
+// stop Go decoding the response.
+func deviceHeaders(in http.Header) http.Header {
+	out := http.Header{}
+	for name, values := range in {
+		switch {
+		case strings.HasPrefix(name, "X-Forwarded-"), strings.HasPrefix(name, "Content-"):
+		case name == "Forwarded", name == "X-Real-Ip", name == "Cookie", name == "Accept-Encoding", name == "Connection":
+		default:
+			out[name] = values
+		}
+	}
+	return out
 }
 
 var statePath = regexp.MustCompile(`^/kobo/[^/]+/v1/library/([0-9a-fA-F-]{36})/state(\?|$)`)
@@ -60,8 +78,7 @@ func progressFrom(e *Exchange) []Progress {
 		}
 		p := Progress{
 			EntitlementID: state.EntitlementID,
-			Authorization: e.RequestHeader.Get("Authorization"),
-			UserAgent:     e.RequestHeader.Get("User-Agent"),
+			Headers:       deviceHeaders(e.RequestHeader),
 		}
 		if state.CurrentBookmark != nil {
 			p.Percent = int(state.CurrentBookmark.ProgressPercent)

@@ -67,8 +67,12 @@ The last run on 77 books: 72 automatic and 5 review with ISBN, title and author;
 automatic and 13 review with title and author, with no conflicts between them. Those
 answers aren't checked by hand and the first row has no independent check.
 
-Not yet seen: a store book through the lookup, and the lookup using auth from a live
-PUT rather than from the device's database.
+Not yet seen: a store book through the lookup, and a successful lookup using auth
+from a live PUT. v0.2.0 sent only Authorization, User-Agent and Accept from the live
+PUT and got 403 on two books. A one-off script using the device's stored token with
+those same headers got 200, so the sidecar now forwards the device's headers the way
+CWA does, apart from hop, session and body headers. That's a likely fix, not a
+confirmed one.
 
 ## SEE ALSO
 

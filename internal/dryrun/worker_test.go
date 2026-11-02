@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -22,9 +23,9 @@ type fakeStore struct {
 	auth  string
 }
 
-func (f *fakeStore) Metadata(_ context.Context, _, authorization, _ string) (kobostore.Metadata, error) {
+func (f *fakeStore) Metadata(_ context.Context, _ string, device http.Header) (kobostore.Metadata, error) {
 	f.calls++
-	f.auth = authorization
+	f.auth = device.Get("Authorization")
 	return f.meta, f.err
 }
 
@@ -36,7 +37,7 @@ func (f fakeLookup) Search(context.Context, string, string) ([]match.Book, error
 }
 
 func progress() capture.Progress {
-	return capture.Progress{EntitlementID: "id", Percent: 6, Status: "Reading", Authorization: secret, Source: "OEBPS/9780061801150_x.xhtml"}
+	return capture.Progress{EntitlementID: "id", Percent: 6, Status: "Reading", Headers: http.Header{"Authorization": {secret}}, Source: "OEBPS/9780061801150_x.xhtml"}
 }
 
 func capturedLog(t *testing.T) *bytes.Buffer {
