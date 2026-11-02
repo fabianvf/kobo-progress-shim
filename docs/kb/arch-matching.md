@@ -41,12 +41,16 @@ the Kobo's path must not depend on it.
 
 Hardcover writes reconcile against its current state rather than replaying events,
 which is what stops repeated syncs creating duplicate reads. Read the book back after
-inserting it, because adding a book may create a read row. Whether it does isn't
-known yet, and the code handles both.
+inserting it, because adding a book creates a read row, and adding another would
+duplicate the read.
 
 Only DRY_RUN=false writes. Anything else stays dry, because a live write publishes
 to a public profile. Switching to live doesn't replay earlier dry-run progress: only
 a book's next report or a hand-chosen match sends anything.
+
+Reports and sync entries have separate queues, because a dropped report only comes
+back when that book is next read. A book is marked pending before its write, so a
+restart in between retries it.
 
 The activity page has no login, so anyone on the LAN can save a match, which then
 drives public writes. It refuses cross-site posts, and must go behind Cloudflare
@@ -59,6 +63,13 @@ progress needs an edition with a page count. The edition comes from the ISBN, th
 from the book already on the shelf.
 
 Read dates are UTC, so a late evening's read can land on the next day.
+
+Deleting a user_book removes its reads and activity but leaves its reading_journals,
+which need delete_reading_journal. Undoing a wrong match has to clear both.
+
+Hardcover answered 429 after about 15 requests in a short burst from separate
+processes, sooner than the 60 a minute we assumed. The client's spacing should avoid
+that, unconfirmed. A 429 is treated as a failed write and retried in 5 minutes.
 
 The od_ prefix in ExternalIds doesn't mean a book came from Libby. Store books
 have them too, and some Libby books don't.
@@ -105,8 +116,12 @@ answers aren't checked by hand and the first row has no independent check.
 
 Live on v0.2.1: a Libby and a store book each returned ISBN, title and author, and
 both matched automatically when run through the matcher separately. Not yet seen:
-a CWA book's not-found response, or a new book arriving in sync. The write client has
-only run against a fake Hardcover, built from the real schema by introspection.
+a CWA book's not-found response, or a new book arriving in sync.
+
+Live on 2026-11-02, from a local run of Reconcile on one book, then deleted: adding,
+a repeat that sent nothing, a progress update and finishing with a rating, all on one
+read. The rating repeats if a caller keeps asking, so the worker's RatingWritten is
+what stops that, and that part has only run against a fake.
 
 ## SEE ALSO
 

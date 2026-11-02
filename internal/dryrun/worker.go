@@ -47,33 +47,36 @@ type Worker struct {
 	writer Writer       // nil when there's no Hardcover token
 	dryRun bool
 	books  *store.Store
-	queue  chan any
-	done   sync.WaitGroup
+	// Separate so a library resync can't crowd out what the Kobo reports.
+	reports chan any
+	synced  chan any
+	done    sync.WaitGroup
 }
 
 func New(kobo Store, lookup match.Lookup, writer Writer, books *store.Store, dryRun bool) *Worker {
-	w := &Worker{kobo: kobo, lookup: lookup, writer: writer, dryRun: dryRun, books: books, queue: make(chan any, queueSize)}
+	w := &Worker{kobo: kobo, lookup: lookup, writer: writer, dryRun: dryRun, books: books, reports: make(chan any, queueSize), synced: make(chan any, queueSize)}
 	w.done.Add(1)
 	go w.run()
 	return w
 }
 
-// These never block. A dropped event is harmless because the Kobo reports the
-// book again on its next page turn and sync.
-func (w *Worker) Progress(p capture.Progress)     { w.submit(p) }
-func (w *Worker) Rating(r capture.Rating)         { w.submit(r) }
-func (w *Worker) SyncedBook(b capture.SyncedBook) { w.submit(b) }
+// These never block. A dropped event only comes back when the Kobo next reports
+// that book, so a dropped sync entry is the cheap one to lose.
+func (w *Worker) Progress(p capture.Progress)     { submit(w.reports, p) }
+func (w *Worker) Rating(r capture.Rating)         { submit(w.reports, r) }
+func (w *Worker) SyncedBook(b capture.SyncedBook) { submit(w.synced, b) }
 
-func (w *Worker) submit(item any) {
+func submit(queue chan any, item any) {
 	select {
-	case w.queue <- item:
+	case queue <- item:
 	default:
 		log.Print("dryrun queue full, event dropped")
 	}
 }
 
 func (w *Worker) Close() {
-	close(w.queue)
+	close(w.reports)
+	close(w.synced)
 	w.done.Wait()
 }
 
@@ -81,11 +84,19 @@ func (w *Worker) run() {
 	defer w.done.Done()
 	retry := time.NewTicker(retryInterval)
 	defer retry.Stop()
-	for {
+	reports, synced := w.reports, w.synced
+	for reports != nil || synced != nil {
 		select {
-		case item, ok := <-w.queue:
+		case item, ok := <-reports:
 			if !ok {
-				return
+				reports = nil
+				continue
+			}
+			w.handle(item)
+		case item, ok := <-synced:
+			if !ok {
+				synced = nil
+				continue
 			}
 			w.handle(item)
 		case <-retry.C:
@@ -195,6 +206,7 @@ func (w *Worker) handleProgress(ctx context.Context, p capture.Progress) error {
 	b.Percent, b.Status = p.Percent, p.Status
 	b.Date = reportDate(p.LastModified)
 	detail := nextAction(&b, p)
+	b.Pending = b.Resolved() && b.Shelf != "" // cleared by a successful write, so a restart in between retries
 	if err := w.books.Put(ctx, b); err != nil {
 		return err
 	}
@@ -300,6 +312,7 @@ func (w *Worker) handleRating(ctx context.Context, r capture.Rating) error {
 		return w.books.AddEvent(ctx, store.Event{Time: time.Now(), EntitlementID: r.ProductID, Detail: fmt.Sprintf("%d stars for an unknown product, not written", r.Stars)})
 	}
 	b.Rating = r.Stars
+	b.Pending = b.Resolved() && b.Shelf != ""
 	if err := w.books.Put(ctx, b); err != nil {
 		return err
 	}

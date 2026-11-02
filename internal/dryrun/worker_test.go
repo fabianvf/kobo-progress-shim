@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -265,5 +266,54 @@ func TestFailedWriteStaysPendingAndRetries(t *testing.T) {
 	}
 	if last := writer.wants[len(writer.wants)-1]; last.Rating != 5 {
 		t.Errorf("retry want = %+v", last)
+	}
+}
+
+type blockingKobo struct {
+	fakeKobo
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (k *blockingKobo) Metadata(ctx context.Context, id string, device http.Header) (kobostore.Metadata, error) {
+	k.entered <- struct{}{}
+	<-k.release
+	return k.fakeKobo.Metadata(ctx, id, device)
+}
+
+func TestResyncCantCrowdOutProgress(t *testing.T) {
+	capturedLog(t)
+	s, _ := openStore(t)
+	kobo := &blockingKobo{fakeKobo: *found(), entered: make(chan struct{}, 2), release: make(chan struct{})}
+	w := New(kobo, fakeLookup{books: []match.Book{lightFantastic}}, nil, s, true)
+	w.Progress(progress(6, "Reading"))
+	<-kobo.entered // the worker is stuck on a lookup, so the queues can only fill
+	for i := range 2 * queueSize {
+		w.SyncedBook(capture.SyncedBook{EntitlementID: fmt.Sprintf("synced-%d", i)})
+	}
+	other := progress(7, "Reading")
+	other.EntitlementID = "other"
+	w.Progress(other)
+	close(kobo.release)
+	w.Close()
+	if b := book(t, s, "other"); b.Percent != 7 {
+		t.Fatalf("book = %+v", b)
+	}
+}
+
+type crashingWriter struct{}
+
+func (crashingWriter) Reconcile(context.Context, hardcover.Want, bool) ([]string, error) {
+	panic("crash mid-write")
+}
+
+func TestProgressIsPendingBeforeTheWrite(t *testing.T) {
+	capturedLog(t)
+	s, _ := openStore(t)
+	w := New(found(), fakeLookup{books: []match.Book{lightFantastic}}, crashingWriter{}, s, false)
+	w.Progress(progress(6, "Reading"))
+	w.Close()
+	if b := book(t, s, "id"); !b.Pending {
+		t.Fatalf("book = %+v", b)
 	}
 }

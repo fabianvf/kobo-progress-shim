@@ -91,6 +91,7 @@ Hardcover writes:
   Hardcover, and retried every 5 minutes under the 60 requests a minute limit. A
   restart loses nothing. Superseded progress is never sent.
 - `DRY_RUN=true` is the default and logs the intended write.
+- No bulk mutation covers shelves or reads across books, so writes go one at a time.
 
 Activity page, on the admin port: recent events, last write result per book, and
 the review queue with a field for a Hardcover book id or URL. Nothing else on that
@@ -116,8 +117,8 @@ Hardcover token is logged or stored.
 - A newly added Libby or store book appearing in sync with metadata.
 - A rating on a Libby or store book. Only a CWA book's rating has been seen, and its
   id matched its EntitlementId.
-- Hardcover's schema and rate limits. The docs page returned 403 and the limit is
-  from a search excerpt.
+- Hardcover's rate limits. The docs page returned 403 and the limit is from a search
+  excerpt. A burst of about 15 requests got a 429.
 - Whether `/v1/initialization` listing `library_sync` at storeapi.kobo.com matters.
   The device still sent its syncs through the proxy in this session.
 

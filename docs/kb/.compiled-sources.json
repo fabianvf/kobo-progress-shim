@@ -6,7 +6,7 @@
   "internal/capture/proxy.go": "078a516ea512193bf97320163bb421c5b70c1c6690c7f0a42a9ac670696eb964",
   "internal/capture/recorder.go": "a9850af0e2b9940634bda67d2d98af169943fef5eef8a9f7c2c8a5102684974a",
   "internal/capture/redact.go": "ff6e5594d157a764d199cc321744662523c20b0b5cb93e796b3e632c62d8750c",
-  "internal/dryrun/worker.go": "66f91f20813fc9072d76b3975b1b766a6fc5f50f04f20a224a6d9f373bb5b74e",
+  "internal/dryrun/worker.go": "d78c0071a163a5e3d3be3cd93a2e01ff41cdf55e8a93ccbbda055997a88da6ae",
   "internal/hardcover/client.go": "f28950a8afcb83d92dd7b81dc7689414f6d702b4e48ea2e529dd2746247e9512",
   "internal/hardcover/writes.go": "3444d4b309be5692a36972b10ac7213b04190ee7dc6173dfca2f30ad5df6e664",
   "internal/kobostore/client.go": "363c5ae0657d736244dca31feab98acf458f1bbd2c4256372439672ad37fde1e",
