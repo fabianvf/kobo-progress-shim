@@ -42,13 +42,18 @@ func main() {
 		defer books.Close()
 		// Optional: without a token the worker saves lookups but doesn't match.
 		var lookup match.Lookup
+		var writer dryrun.Writer
 		if token := os.Getenv("HARDCOVER_API_KEY"); token != "" {
-			lookup = hardcover.New(token)
+			client := hardcover.New(token)
+			lookup, writer = client, client
 		}
-		worker := dryrun.New(kobostore.New(), lookup, books)
+		// Anything but an explicit false stays dry, because a live write publishes.
+		dryRun := os.Getenv("DRY_RUN") != "false"
+		log.Printf("dry run: %v", dryRun)
+		worker := dryrun.New(kobostore.New(), lookup, writer, books, dryRun)
 		defer worker.Close()
 		recorder.Observer = worker
-		activity.Register(admin, books)
+		activity.Register(admin, books, dryRun)
 	}
 
 	go func() {

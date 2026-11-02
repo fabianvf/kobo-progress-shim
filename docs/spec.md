@@ -83,9 +83,13 @@ Hardcover writes:
 
 - One user_book per book and one read row per user_book, created if missing and
   updated after that, so repeated syncs can't create duplicates.
-- Skip the call if status and whole-number progress haven't changed.
-- Durable queue in SQLite with retry and backoff, under the 60 requests a minute
-  limit. A restart loses nothing that was already queued.
+- Each write reads the book's current Hardcover state and sends only the difference,
+  so an unchanged book sends nothing.
+- Progress is sent as pages, because Hardcover's read input has no percent field.
+  An edition with no page count gets the status but no progress.
+- The latest state per book is saved in SQLite, marked pending until it reaches
+  Hardcover, and retried every 5 minutes under the 60 requests a minute limit. A
+  restart loses nothing. Superseded progress is never sent.
 - `DRY_RUN=true` is the default and logs the intended write.
 
 Activity page, on the admin port: recent events, last write result per book, and

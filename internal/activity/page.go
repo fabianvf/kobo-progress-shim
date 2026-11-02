@@ -25,7 +25,7 @@ input[type=text]{width:10rem}.muted{color:#666}
 @media (prefers-color-scheme:dark){body{color:#ddd;background:#181818}td,th{border-color:#444}.muted{color:#999}}
 </style></head><body>
 <h1>Kobo progress</h1>
-<p class="muted">Dry run: nothing is written to Hardcover.</p>
+{{if .DryRun}}<p class="muted">Dry run: nothing is written to Hardcover.</p>{{else}}<p class="muted">Live: changes are written to Hardcover.</p>{{end}}
 <h2>Needs a match ({{len .Review}})</h2>
 {{if .Review}}<table><tr><th>Book</th><th>Why</th><th>Suggested</th><th>Hardcover book id</th></tr>
 {{range .Review}}<tr><td>{{.Title}}{{if .ISBN}}<br><span class="muted">{{.ISBN}}</span>{{end}}</td><td>{{.Reason}}</td><td>{{.Suggestion}}</td>
@@ -38,7 +38,7 @@ input[type=text]{width:10rem}.muted{color:#666}
 </body></html>`))
 
 // Register adds the page to the admin mux.
-func Register(mux *http.ServeMux, books *store.Store) {
+func Register(mux *http.ServeMux, books *store.Store, dryRun bool) {
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		data, err := load(r.Context(), books)
 		if err != nil {
@@ -46,12 +46,16 @@ func Register(mux *http.ServeMux, books *store.Store) {
 			http.Error(w, "couldn't read the store", http.StatusInternalServerError)
 			return
 		}
+		data.DryRun = dryRun
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := page.Execute(w, data); err != nil {
 			log.Printf("activity: %v", err)
 		}
 	})
-	mux.HandleFunc("POST /confirm", func(w http.ResponseWriter, r *http.Request) {
+	// A saved match drives public writes, and a page open in any LAN browser could
+	// otherwise post here.
+	sameOrigin := http.NewCrossOriginProtection()
+	mux.Handle("POST /confirm", sameOrigin.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.Atoi(strings.TrimSpace(r.FormValue("hardcover_id")))
 		if err != nil || id <= 0 {
 			http.Error(w, "the Hardcover book id must be a number", http.StatusBadRequest)
@@ -63,10 +67,11 @@ func Register(mux *http.ServeMux, books *store.Store) {
 			return
 		}
 		http.Redirect(w, r, "./", http.StatusSeeOther)
-	})
+	})))
 }
 
 type pageData struct {
+	DryRun bool
 	Review []store.Book
 	Events []store.Event
 }

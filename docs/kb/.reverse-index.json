@@ -74,7 +74,19 @@
    "articles": [
     "arch-matching"
    ],
-   "tests": []
+   "tests": [
+    "internal/dryrun/worker_test.go",
+    "internal/hardcover/writes_test.go"
+   ]
+  },
+  "internal/hardcover/writes.go": {
+   "articles": [
+    "arch-matching"
+   ],
+   "tests": [
+    "internal/dryrun/worker_test.go",
+    "internal/hardcover/writes_test.go"
+   ]
   },
   "internal/kobostore/client.go": {
    "articles": [
@@ -91,6 +103,7 @@
    ],
    "tests": [
     "internal/dryrun/worker_test.go",
+    "internal/hardcover/writes_test.go",
     "internal/match/match_test.go"
    ]
   },

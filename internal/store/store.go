@@ -31,6 +31,9 @@ type Book struct {
 	Status        string
 	Shelf         string
 	Rating        int
+	RatingWritten int
+	Date          string // when the Kobo last reported, YYYY-MM-DD
+	Pending       bool   // Hardcover hasn't got the latest state yet
 }
 
 // Resolved reports whether the book has a Hardcover id that can be written to.
@@ -117,7 +120,11 @@ func (s *Store) Put(ctx context.Context, b Book) error {
 
 // NeedingReview returns books waiting for a person to choose a match.
 func (s *Store) NeedingReview(ctx context.Context) ([]Book, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT data FROM books WHERE outcome = 'review' ORDER BY entitlement_id`)
+	return s.list(ctx, `SELECT data FROM books WHERE outcome = 'review' ORDER BY entitlement_id`)
+}
+
+func (s *Store) list(ctx context.Context, query string) ([]Book, error) {
+	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +155,13 @@ func (s *Store) Confirm(ctx context.Context, id string, hardcoverID int) (Book, 
 		return Book{}, errors.New("store: unknown book")
 	}
 	b.Outcome, b.HardcoverID, b.Reason = Confirmed, hardcoverID, "chosen by hand"
+	b.Pending = b.Shelf != "" // replay the latest progress on the chosen book
 	return b, s.Put(ctx, b)
+}
+
+// PendingBooks returns resolved books whose latest state hasn't reached Hardcover.
+func (s *Store) PendingBooks(ctx context.Context) ([]Book, error) {
+	return s.list(ctx, `SELECT data FROM books WHERE json_extract(data, '$.Pending') = 1 ORDER BY entitlement_id`)
 }
 
 func (s *Store) AddEvent(ctx context.Context, e Event) error {

@@ -39,7 +39,26 @@ metadata from sync, otherwise a sync would undo a correction.
 A store that won't open disables matching and leaves the proxy running, because
 the Kobo's path must not depend on it.
 
+Hardcover writes reconcile against its current state rather than replaying events,
+which is what stops repeated syncs creating duplicate reads. Read the book back after
+inserting it, because adding a book may create a read row. Whether it does isn't
+known yet, and the code handles both.
+
+Only DRY_RUN=false writes. Anything else stays dry, because a live write publishes
+to a public profile. Switching to live doesn't replay earlier dry-run progress: only
+a book's next report or a hand-chosen match sends anything.
+
+The activity page has no login, so anyone on the LAN can save a match, which then
+drives public writes. It refuses cross-site posts, and must go behind Cloudflare
+Access if it's ever exposed remotely.
+
 ## GOTCHA
+
+Hardcover's read input takes progress_pages or progress_seconds, not a percent, so
+progress needs an edition with a page count. The edition comes from the ISBN, then
+from the book already on the shelf.
+
+Read dates are UTC, so a late evening's read can land on the next day.
 
 The od_ prefix in ExternalIds doesn't mean a book came from Libby. Store books
 have them too, and some Libby books don't.
@@ -86,7 +105,8 @@ answers aren't checked by hand and the first row has no independent check.
 
 Live on v0.2.1: a Libby and a store book each returned ISBN, title and author, and
 both matched automatically when run through the matcher separately. Not yet seen:
-a CWA book's not-found response, or a new book arriving in sync.
+a CWA book's not-found response, or a new book arriving in sync. The write client has
+only run against a fake Hardcover, built from the real schema by introspection.
 
 ## SEE ALSO
 

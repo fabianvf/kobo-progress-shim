@@ -58,6 +58,23 @@ func TestNeedingReviewAndEvents(t *testing.T) {
 	}
 }
 
+func TestConfirmReplaysLatestProgress(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(filepath.Join(t.TempDir(), "shim.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	s.Put(ctx, Book{EntitlementID: "a", Outcome: "review", Shelf: "reading"})
+	s.Put(ctx, Book{EntitlementID: "b", Outcome: "review"})
+	s.Confirm(ctx, "a", 1)
+	s.Confirm(ctx, "b", 2)
+	pending, err := s.PendingBooks(ctx)
+	if err != nil || len(pending) != 1 || pending[0].EntitlementID != "a" {
+		t.Fatalf("pending = %+v, err %v", pending, err)
+	}
+}
+
 func TestConfirmUnknownBook(t *testing.T) {
 	s, err := Open(filepath.Join(t.TempDir(), "shim.db"))
 	if err != nil {

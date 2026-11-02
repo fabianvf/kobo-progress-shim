@@ -25,7 +25,7 @@ func TestPageAndConfirm(t *testing.T) {
 	books.AddEvent(ctx, store.Event{Time: time.Now(), EntitlementID: "e", Title: "<Whispers>", Detail: "reading at 6%"})
 
 	mux := http.NewServeMux()
-	Register(mux, books)
+	Register(mux, books, true)
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
@@ -58,6 +58,35 @@ func TestPageAndConfirm(t *testing.T) {
 	}
 	if b, _, _ := books.Get(ctx, "e"); !b.Resolved() || b.HardcoverID != 432534 {
 		t.Errorf("book = %+v", b)
+	}
+}
+
+func TestConfirmRefusesCrossSitePost(t *testing.T) {
+	ctx := context.Background()
+	books, err := store.Open(filepath.Join(t.TempDir(), "shim.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer books.Close()
+	books.Put(ctx, store.Book{EntitlementID: "e", Outcome: "review"})
+	mux := http.NewServeMux()
+	Register(mux, books, true)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	req, _ := http.NewRequest(http.MethodPost, server.URL+"/confirm", strings.NewReader("id=e&hardcover_id=1"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("status %d", resp.StatusCode)
+	}
+	if b, _, _ := books.Get(ctx, "e"); b.Resolved() {
+		t.Error("cross-site post saved a match")
 	}
 }
 
