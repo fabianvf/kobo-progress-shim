@@ -17,7 +17,8 @@ type fakeHardcover struct {
 	t            *testing.T
 	book         *fakeBook
 	pages        int
-	insertAdds   bool // whether adding a book also creates a read, as it may
+	insertAdds   bool // whether adding a book also creates a read, as it does
+	statusAdds   bool // whether marking a book read adds a read finished today, as it does
 	mutations    []string
 	lastObject   map[string]any
 	failMutation string
@@ -59,6 +60,9 @@ func (f *fakeHardcover) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case "update_user_book":
 			if s, ok := object["status_id"]; ok {
 				f.book.Status = int(s.(float64))
+				if f.statusAdds && f.book.Status == statusRead {
+					f.book.Reads = append([]map[string]any{{"id": 90, "started_at": nil, "finished_at": "2026-12-25", "progress_pages": nil, "edition_id": nil}}, f.book.Reads...)
+				}
 			}
 			if rating, ok := object["rating"]; ok {
 				f.book.Rating = rating
@@ -69,6 +73,14 @@ func (f *fakeHardcover) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				read[k] = v
 			}
 			f.book.Reads = append([]map[string]any{read}, f.book.Reads...)
+		case "delete_user_book_read":
+			var kept []map[string]any
+			for _, read := range f.book.Reads {
+				if int(toFloat(read["id"])) != int(req.Variables["id"].(float64)) {
+					kept = append(kept, read)
+				}
+			}
+			f.book.Reads = kept
 		case "update_user_book_read":
 			for _, read := range f.book.Reads {
 				if int(toFloat(read["id"])) == int(req.Variables["id"].(float64)) {
@@ -184,6 +196,49 @@ func TestFinishedOnBothAddsNothing(t *testing.T) {
 	}
 	if len(f.mutations) != 0 {
 		t.Fatalf("mutations = %v", f.mutations)
+	}
+}
+
+func TestMarkingReadKeepsAnEarlierRead(t *testing.T) {
+	f := &fakeHardcover{pages: 200, statusAdds: true, book: &fakeBook{Status: 1, Reads: []map[string]any{{"id": 1, "started_at": "2026-09-04", "finished_at": "2026-09-21"}}}}
+	c := client(t, f)
+	finished := reading
+	finished.Read, finished.Percent, finished.Date = true, 100, "2026-11-09"
+	for range 2 {
+		if _, err := c.Reconcile(context.Background(), finished, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(f.book.Reads) != 1 || f.book.Reads[0]["finished_at"] != "2026-09-21" || f.book.Status != statusRead {
+		t.Fatalf("book = %+v", f.book)
+	}
+}
+
+func TestMarkingReadWithNoReadsUsesTheKoboDate(t *testing.T) {
+	f := &fakeHardcover{pages: 200, statusAdds: true, book: &fakeBook{Status: 1}}
+	c := client(t, f)
+	finished := reading
+	finished.Read, finished.Percent, finished.Date = true, 100, "2026-11-09"
+	for range 2 {
+		if _, err := c.Reconcile(context.Background(), finished, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(f.book.Reads) != 1 || f.book.Reads[0]["finished_at"] != "2026-11-09" {
+		t.Fatalf("book = %+v", f.book)
+	}
+	if got := toFloat(f.book.Reads[0]["progress_pages"]); got != 200 {
+		t.Errorf("progress_pages = %v", got)
+	}
+}
+
+func TestDeleteFailureIsAnError(t *testing.T) {
+	f := &fakeHardcover{pages: 200, statusAdds: true, failMutation: "delete_user_book_read", book: &fakeBook{Status: 1, Reads: []map[string]any{{"id": 1, "finished_at": "2026-09-21"}}}}
+	c := client(t, f)
+	finished := reading
+	finished.Read, finished.Percent = true, 100
+	if _, err := c.Reconcile(context.Background(), finished, false); err == nil {
+		t.Fatal("no error")
 	}
 }
 

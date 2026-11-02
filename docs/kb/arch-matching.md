@@ -64,6 +64,15 @@ from the book already on the shelf.
 
 Read dates are UTC, so a late evening's read can land on the next day.
 
+Marking a book read, by insert or status change, makes Hardcover add a read finished
+today plus an activity entry, even if the book already has a read. Reconcile deletes
+that read when the book had earlier reads, and otherwise redates it to the Kobo's
+date. If it dies between the status change and the delete, a retry sees status read
+and leaves the extra read. Deleting a read leaves the status alone and clears the
+dates, which is the way to mark a book read with no date.
+
+Hardcover posts the activity entry a few seconds after the write.
+
 Deleting a user_book removes its reads and activity but leaves its reading_journals,
 which need delete_reading_journal. Undoing a wrong match has to clear both.
 

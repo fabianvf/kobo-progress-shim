@@ -8,7 +8,7 @@
   "internal/capture/redact.go": "ff6e5594d157a764d199cc321744662523c20b0b5cb93e796b3e632c62d8750c",
   "internal/dryrun/worker.go": "d78c0071a163a5e3d3be3cd93a2e01ff41cdf55e8a93ccbbda055997a88da6ae",
   "internal/hardcover/client.go": "f28950a8afcb83d92dd7b81dc7689414f6d702b4e48ea2e529dd2746247e9512",
-  "internal/hardcover/writes.go": "3444d4b309be5692a36972b10ac7213b04190ee7dc6173dfca2f30ad5df6e664",
+  "internal/hardcover/writes.go": "ec175083df294c8214cf6b980eaebf4c61827fbd1371a74659c612bd12732c06",
   "internal/kobostore/client.go": "363c5ae0657d736244dca31feab98acf458f1bbd2c4256372439672ad37fde1e",
   "internal/match/match.go": "532f224ea03aee33882c0673232a82c6c8a005fb0f120b25e914287418911b48",
   "internal/store/store.go": "ad6e6965ed3bda4cfa885e76a9228486caf38220577c8ff0a186326b1f4fdf81"

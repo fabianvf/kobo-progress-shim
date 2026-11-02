@@ -57,6 +57,7 @@ func (c *Client) Reconcile(ctx context.Context, want Want, dryRun bool) ([]strin
 	}
 
 	var done []string
+	var prior map[int]bool // reads from before this call changed the status, nil if it didn't
 	if current == nil {
 		status := statusReading
 		if want.Read {
@@ -77,6 +78,7 @@ func (c *Client) Reconcile(ctx context.Context, want Want, dryRun bool) ([]strin
 			if current == nil {
 				return done, fmt.Errorf("hardcover: book %d missing after insert", want.BookID)
 			}
+			prior = map[int]bool{}
 		}
 	}
 
@@ -92,8 +94,22 @@ func (c *Client) Reconcile(ctx context.Context, want Want, dryRun bool) ([]strin
 	if current.StatusID != status {
 		done = append(done, fmt.Sprintf("set status to %s", statusName(status)))
 		if !dryRun {
+			prior = readIDs(current.Reads)
 			if err := c.updateUserBook(ctx, current.ID, map[string]any{"status_id": status}); err != nil {
 				return done, err
+			}
+			// Marking a book read makes Hardcover add a read finished today, even
+			// when the book already has one.
+			if current, err = c.userBook(ctx, want.BookID); err != nil {
+				return done, err
+			}
+			if current == nil {
+				return done, fmt.Errorf("hardcover: book %d missing after status change", want.BookID)
+			}
+			if want.Read && len(prior) > 0 {
+				if err := c.removeNewReads(ctx, current, prior); err != nil {
+					return done, err
+				}
 			}
 		}
 	}
@@ -101,7 +117,7 @@ func (c *Client) Reconcile(ctx context.Context, want Want, dryRun bool) ([]strin
 	if ed == nil {
 		ed = current.Edition
 	}
-	steps, err := c.reconcileRead(ctx, current, ed, want, dryRun)
+	steps, err := c.reconcileRead(ctx, current, ed, want, prior, dryRun)
 	done = append(done, steps...)
 	if err != nil {
 		return done, err
@@ -122,7 +138,7 @@ func (c *Client) applyRating(ctx context.Context, current *userBook, want Want, 
 
 // reconcileRead updates the open read, or adds one only when there isn't one.
 // Every field is sent on update, as CWA does, so none gets cleared by omission.
-func (c *Client) reconcileRead(ctx context.Context, current *userBook, ed *edition, want Want, dryRun bool) ([]string, error) {
+func (c *Client) reconcileRead(ctx context.Context, current *userBook, ed *edition, want Want, prior map[int]bool, dryRun bool) ([]string, error) {
 	var open *userBookRead
 	for i := range current.Reads {
 		if current.Reads[i].FinishedAt == nil {
@@ -131,7 +147,10 @@ func (c *Client) reconcileRead(ctx context.Context, current *userBook, ed *editi
 		}
 	}
 	if open == nil && want.Read && len(current.Reads) > 0 {
-		return nil, nil // already has a finished read, and re-reads aren't tracked
+		if prior == nil || len(prior) > 0 {
+			return nil, nil // already has a finished read, and re-reads aren't tracked
+		}
+		open = &current.Reads[0] // Hardcover just created it, dated today rather than want.Date
 	}
 
 	var pages *int
@@ -180,6 +199,31 @@ func (c *Client) reconcileRead(ctx context.Context, current *userBook, ed *editi
 	return []string{description}, c.mutateRead(ctx, `mutation($id: Int!, $o: DatesReadInput!) {
 		result: update_user_book_read(id: $id, object: $o) { id error }
 	}`, open.ID, object)
+}
+
+// removeNewReads deletes reads that aren't in prior and drops them from current.
+func (c *Client) removeNewReads(ctx context.Context, current *userBook, prior map[int]bool) error {
+	var kept []userBookRead
+	for _, read := range current.Reads {
+		if prior[read.ID] {
+			kept = append(kept, read)
+			continue
+		}
+		if err := c.mutate(ctx, `mutation($id: Int!) { result: delete_user_book_read(id: $id) { id error } }`,
+			map[string]any{"id": read.ID}); err != nil {
+			return err
+		}
+	}
+	current.Reads = kept
+	return nil
+}
+
+func readIDs(reads []userBookRead) map[int]bool {
+	ids := make(map[int]bool, len(reads))
+	for _, read := range reads {
+		ids[read.ID] = true
+	}
+	return ids
 }
 
 func describeRead(action string, pages *int, ed *edition, want Want) string {
