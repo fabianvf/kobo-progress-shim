@@ -11,6 +11,10 @@ import (
 	"time"
 
 	"github.com/fabianvf/kobo-progress-shim/internal/capture"
+	"github.com/fabianvf/kobo-progress-shim/internal/dryrun"
+	"github.com/fabianvf/kobo-progress-shim/internal/hardcover"
+	"github.com/fabianvf/kobo-progress-shim/internal/kobostore"
+	"github.com/fabianvf/kobo-progress-shim/internal/match"
 )
 
 func main() {
@@ -21,6 +25,14 @@ func main() {
 
 	recorder := capture.NewRecorder(env("CAPTURE_FILE", "/data/capture.jsonl"))
 	defer recorder.Close()
+
+	// Optional: without a token the worker logs store lookups but doesn't match.
+	var lookup match.Lookup
+	if token := os.Getenv("HARDCOVER_API_KEY"); token != "" {
+		lookup = hardcover.New(token)
+	}
+	worker := dryrun.New(kobostore.New(), lookup)
+	recorder.OnProgress = worker.Submit
 
 	go func() {
 		mux := http.NewServeMux()

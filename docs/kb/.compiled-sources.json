@@ -1,6 +1,12 @@
 {
-  "cmd/kobo-capture/main.go": "82360d5a8ca80401b02c6ffd6926683232bb16d5098de2fb8947c1ad8bbd7701",
+  "cmd/kobo-capture/main.go": "750af2989c4480aef00fb468efc14a1129776cdb7068352fb37bace767670928",
+  "cmd/match-eval/main.go": "a7bba0048bbf6f02db75f407269f263a8033b0e966d2671e09e4451f773d2060",
+  "internal/capture/progress.go": "acf4feaebf41ba441a51a2022f50a97e8b7dca2a834d1452de479d07118df44d",
   "internal/capture/proxy.go": "078a516ea512193bf97320163bb421c5b70c1c6690c7f0a42a9ac670696eb964",
-  "internal/capture/recorder.go": "7ddc1736ae78bd82814d18ca8e77c58e538395c3bc29cdf769a7c46194365b9d",
-  "internal/capture/redact.go": "ff6e5594d157a764d199cc321744662523c20b0b5cb93e796b3e632c62d8750c"
+  "internal/capture/recorder.go": "3d19943d1f3241e4c8d7e3e564a0c6c047d3ec406c117b416e467a1c4efe6c2f",
+  "internal/capture/redact.go": "ff6e5594d157a764d199cc321744662523c20b0b5cb93e796b3e632c62d8750c",
+  "internal/dryrun/worker.go": "bd56580f477af871736f26b9666a123a00fdc7bd52e3d7e578e79fe5ebf75846",
+  "internal/hardcover/client.go": "f28950a8afcb83d92dd7b81dc7689414f6d702b4e48ea2e529dd2746247e9512",
+  "internal/kobostore/client.go": "17bc04fb06e39e80a2f7015c8c97c8b4718f0439338c7f95f58b4d6626f281be",
+  "internal/match/match.go": "532f224ea03aee33882c0673232a82c6c8a005fb0f120b25e914287418911b48"
 }

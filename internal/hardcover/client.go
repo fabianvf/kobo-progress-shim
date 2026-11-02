@@ -1,0 +1,157 @@
+// Package hardcover talks to Hardcover's GraphQL API.
+package hardcover
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/fabianvf/kobo-progress-shim/internal/match"
+)
+
+const endpoint = "https://api.hardcover.app/v1/graphql"
+
+// Hardcover documents a limit of 60 requests a minute.
+const minInterval = 1100 * time.Millisecond
+
+type Client struct {
+	token    string
+	endpoint string
+	http     *http.Client
+	tick     <-chan time.Time
+}
+
+func New(token string) *Client {
+	token = strings.TrimSpace(token)
+	if !strings.HasPrefix(strings.ToLower(token), "bearer ") {
+		token = "Bearer " + token
+	}
+	return &Client{
+		token:    token,
+		endpoint: endpoint,
+		http:     &http.Client{Timeout: 30 * time.Second},
+		tick:     time.Tick(minInterval),
+	}
+}
+
+func (c *Client) query(ctx context.Context, query string, vars map[string]any, out any) error {
+	select {
+	case <-c.tick:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	body, err := json.Marshal(map[string]any{"query": query, "variables": vars})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", c.token)
+	req.Header.Set("User-Agent", "kobo-progress-shim")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("hardcover: status %d", resp.StatusCode)
+	}
+	var envelope struct {
+		Data   json.RawMessage `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return fmt.Errorf("hardcover: decoding response: %w", err)
+	}
+	if len(envelope.Errors) > 0 {
+		return fmt.Errorf("hardcover: %s", envelope.Errors[0].Message)
+	}
+	return json.Unmarshal(envelope.Data, out)
+}
+
+// BooksByISBN returns each distinct book with an edition carrying this ISBN.
+func (c *Client) BooksByISBN(ctx context.Context, isbn string) ([]match.Book, error) {
+	const q = `query($i: String!) {
+		editions(where: {isbn_13: {_eq: $i}}) {
+			book { id title contributions { author { name } } }
+		}
+	}`
+	var out struct {
+		Editions []struct {
+			Book *struct {
+				ID            int    `json:"id"`
+				Title         string `json:"title"`
+				Contributions []struct {
+					Author *struct {
+						Name string `json:"name"`
+					} `json:"author"`
+				} `json:"contributions"`
+			} `json:"book"`
+		} `json:"editions"`
+	}
+	if err := c.query(ctx, q, map[string]any{"i": isbn}, &out); err != nil {
+		return nil, err
+	}
+	seen := map[int]bool{}
+	var books []match.Book
+	for _, e := range out.Editions {
+		if e.Book == nil || seen[e.Book.ID] {
+			continue
+		}
+		seen[e.Book.ID] = true
+		b := match.Book{ID: e.Book.ID, Title: e.Book.Title}
+		for _, contribution := range e.Book.Contributions {
+			if contribution.Author != nil {
+				b.Authors = append(b.Authors, contribution.Author.Name)
+			}
+		}
+		books = append(books, b)
+	}
+	return books, nil
+}
+
+func (c *Client) Search(ctx context.Context, title, author string) ([]match.Book, error) {
+	const q = `query($q: String!) {
+		search(query: $q, query_type: "Book", per_page: 5) { results }
+	}`
+	var out struct {
+		Search struct {
+			Results struct {
+				Hits []struct {
+					Document struct {
+						ID          json.Number `json:"id"`
+						Title       string      `json:"title"`
+						AuthorNames []string    `json:"author_names"`
+					} `json:"document"`
+				} `json:"hits"`
+			} `json:"results"`
+		} `json:"search"`
+	}
+	vars := map[string]any{"q": strings.TrimSpace(title + " " + author)}
+	if err := c.query(ctx, q, vars, &out); err != nil {
+		return nil, err
+	}
+	var books []match.Book
+	for _, h := range out.Search.Results.Hits {
+		id, err := h.Document.ID.Int64()
+		if err != nil {
+			return nil, fmt.Errorf("hardcover: search id %q: %w", h.Document.ID, err)
+		}
+		books = append(books, match.Book{ID: int(id), Title: h.Document.Title, Authors: h.Document.AuthorNames})
+	}
+	return books, nil
+}

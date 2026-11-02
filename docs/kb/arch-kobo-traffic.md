@@ -7,8 +7,8 @@ see_also:
 
 What the proxy path can see. Everything here describes CWA or the Kobo rather
 than this repo, so no gate flags it when it goes stale. Claims are from reading
-CWA v4.0.8 on 2026-11-01 unless marked otherwise. No real device traffic has been
-captured yet.
+CWA v4.0.8 on 2026-11-01, and from one capture on 2026-11-02 (N873, firmware
+4.38.23852, CWA and Libby books, no store book read).
 
 ## GOTCHA
 
@@ -18,12 +18,15 @@ non-GET requests are proxied by CWA itself, so a state PUT is visible but its
 metadata lookup isn't (CWA cps/kobo.py, redirect_or_proxy_request).
 
 Sync is incremental, so a book already on the device may never appear in a sync
-response. An ID map built only from sync has holes. The planned fix is a metadata
-lookup on the first unknown PUT, using that request's Kobo auth, in memory only.
+response. Seen: a Libby book's state came back through sync with no title or
+metadata. See arch-matching for the store lookup that fills this gap.
 
-CWA's sync entries don't appear to carry ISBNs: CWA cps/kobo.py never mentions
-them. Its own books need title and author, or a read-only look at metadata.db
-for the hardcover-id identifiers.
+The state PUT carries an EntitlementId, which isn't the id analytics events call
+volumeid, and nothing in the traffic links them.
+
+CWA's sync entries carry a title and contributors with empty ExternalIds. Its own
+books need title and author, or a read-only look at metadata.db for the
+hardcover-id identifiers.
 
 Not every Kobo call lives under the /kobo/ token path. CWA points
 reading_services_host at the site root when annotation sync is on or the store
@@ -42,10 +45,9 @@ traffic, and supporting them would need something running on the device. Unverif
 
 ## VERIFY
 
-Unverified until the first capture session: whether store and Libby progress
-really passes through CWA, whether those sync entries carry ISBNs, and which hosts
-the Libra's firmware uses. Read the store, Libby and CWA books in that session and
-check the capture file.
+Seen in the capture: Libby and CWA progress both pass through as state PUTs. Store
+progress is still unverified, and so is a new store or Libby book arriving in sync.
+Read one and check the capture file.
 
 ## SEE ALSO
 

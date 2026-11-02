@@ -64,6 +64,9 @@ type Recorder struct {
 	done     sync.WaitGroup
 	dropped  atomic.Int64
 	closing  sync.Once
+
+	// OnProgress must not block. Set it before traffic starts.
+	OnProgress func(Progress)
 }
 
 // NewRecorder never fails: an unwritable path only loses the capture.
@@ -106,6 +109,7 @@ func (r *Recorder) Close() {
 func (r *Recorder) run() {
 	defer r.done.Done()
 	for exchange := range r.queue {
+		r.observe(exchange)
 		r.write(exchange)
 	}
 }

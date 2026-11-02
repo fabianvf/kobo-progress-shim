@@ -8,12 +8,30 @@
    ],
    "tests": []
   },
+  "cmd/match-eval/main.go": {
+   "articles": [
+    "arch-matching"
+   ],
+   "tests": []
+  },
+  "internal/capture/progress.go": {
+   "articles": [
+    "arch-capture"
+   ],
+   "tests": [
+    "internal/capture/progress_test.go",
+    "internal/capture/proxy_test.go",
+    "internal/dryrun/worker_test.go"
+   ]
+  },
   "internal/capture/proxy.go": {
    "articles": [
     "arch-capture"
    ],
    "tests": [
-    "internal/capture/proxy_test.go"
+    "internal/capture/progress_test.go",
+    "internal/capture/proxy_test.go",
+    "internal/dryrun/worker_test.go"
    ]
   },
   "internal/capture/recorder.go": {
@@ -21,7 +39,9 @@
     "arch-capture"
    ],
    "tests": [
-    "internal/capture/proxy_test.go"
+    "internal/capture/progress_test.go",
+    "internal/capture/proxy_test.go",
+    "internal/dryrun/worker_test.go"
    ]
   },
   "internal/capture/redact.go": {
@@ -29,7 +49,41 @@
     "arch-capture"
    ],
    "tests": [
-    "internal/capture/proxy_test.go"
+    "internal/capture/progress_test.go",
+    "internal/capture/proxy_test.go",
+    "internal/dryrun/worker_test.go"
+   ]
+  },
+  "internal/dryrun/worker.go": {
+   "articles": [
+    "arch-matching"
+   ],
+   "tests": [
+    "internal/dryrun/worker_test.go"
+   ]
+  },
+  "internal/hardcover/client.go": {
+   "articles": [
+    "arch-matching"
+   ],
+   "tests": []
+  },
+  "internal/kobostore/client.go": {
+   "articles": [
+    "arch-matching"
+   ],
+   "tests": [
+    "internal/dryrun/worker_test.go",
+    "internal/kobostore/client_test.go"
+   ]
+  },
+  "internal/match/match.go": {
+   "articles": [
+    "arch-matching"
+   ],
+   "tests": [
+    "internal/dryrun/worker_test.go",
+    "internal/match/match_test.go"
    ]
   }
  },
