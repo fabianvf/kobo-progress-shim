@@ -65,8 +65,8 @@ type Recorder struct {
 	dropped  atomic.Int64
 	closing  sync.Once
 
-	// OnProgress must not block. Set it before traffic starts.
-	OnProgress func(Progress)
+	// Observer is optional. Set it before traffic starts.
+	Observer Observer
 }
 
 // NewRecorder never fails: an unwritable path only loses the capture.
@@ -166,19 +166,24 @@ func redactBody(body *cappedBuffer, header http.Header) (any, bool) {
 	if len(raw) == 0 {
 		return nil, false
 	}
-	if strings.EqualFold(header.Get("Content-Encoding"), "gzip") {
-		reader, err := gzip.NewReader(bytes.NewReader(raw))
-		if err != nil {
-			return "[unparseable]", truncated
-		}
-		raw, err = io.ReadAll(io.LimitReader(reader, maxCapturedBody))
-		if err != nil {
-			return "[unparseable]", truncated
-		}
+	raw, err := decoded(raw, header)
+	if err != nil {
+		return "[unparseable]", truncated
 	}
 	var value any
 	if err := json.Unmarshal(raw, &value); err != nil {
 		return "[unparseable]", truncated
 	}
 	return redactValue(value), truncated
+}
+
+func decoded(raw []byte, header http.Header) ([]byte, error) {
+	if !strings.EqualFold(header.Get("Content-Encoding"), "gzip") {
+		return raw, nil
+	}
+	reader, err := gzip.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	return io.ReadAll(io.LimitReader(reader, maxCapturedBody))
 }

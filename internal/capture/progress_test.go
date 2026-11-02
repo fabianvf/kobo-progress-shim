@@ -62,7 +62,42 @@ func TestProgressIgnoresOtherExchanges(t *testing.T) {
 	}
 }
 
+type panicObserver struct{}
+
+func (panicObserver) Progress(Progress)     { panic("boom") }
+func (panicObserver) Rating(Rating)         { panic("boom") }
+func (panicObserver) SyncedBook(SyncedBook) { panic("boom") }
+
 func TestObserverPanicIsContained(t *testing.T) {
-	r := &Recorder{OnProgress: func(Progress) { panic("boom") }}
+	r := &Recorder{Observer: panicObserver{}}
 	r.observe(stateExchange("PUT", stateURI, 200, stateBody))
+}
+
+func TestRatingIgnoresResponseStatus(t *testing.T) {
+	uri := "/kobo/tok/v1/products/c1b7071d-72cd-4472-bdfa-348cb011fed1/rating/4"
+	got, ok := ratingFrom(stateExchange("POST", uri, 404, ""))
+	if !ok || got.Stars != 4 || got.ProductID != "c1b7071d-72cd-4472-bdfa-348cb011fed1" {
+		t.Fatalf("got %+v, %v", got, ok)
+	}
+	if _, ok := ratingFrom(stateExchange("GET", uri, 200, "")); ok {
+		t.Error("GET counted as a rating")
+	}
+	if _, ok := ratingFrom(stateExchange("POST", "/kobo/tok/v1/products/c1b7071d-72cd-4472-bdfa-348cb011fed1/rating/9", 200, "")); ok {
+		t.Error("9 stars accepted")
+	}
+}
+
+func TestSyncedBooks(t *testing.T) {
+	e := stateExchange("GET", "/kobo/tok/v1/library/sync?Filter=ALL", 200, "")
+	e.ResponseHeader = http.Header{}
+	e.ResponseBody = &cappedBuffer{limit: maxCapturedBody}
+	e.ResponseBody.Write([]byte(`[
+		{"NewEntitlement":{"BookMetadata":{"EntitlementId":"a","RevisionId":"a","Title":"The monster-god of Mamurth","Contributors":["Edmond Hamilton"]}}},
+		{"ChangedEntitlement":{"BookMetadata":{"EntitlementId":"b","RevisionId":"r","Title":"Mort","Isbn":"9780061020681"}}},
+		{"ChangedReadingState":{"ReadingState":{"EntitlementId":"c"}}}
+	]`))
+	got := syncedBooksFrom(e)
+	if len(got) != 2 || got[0].Title != "The monster-god of Mamurth" || got[0].Authors[0] != "Edmond Hamilton" || got[1].ISBN != "9780061020681" || got[1].RevisionID != "r" {
+		t.Fatalf("got %+v", got)
+	}
 }

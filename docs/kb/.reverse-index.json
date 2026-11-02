@@ -14,6 +14,14 @@
    ],
    "tests": []
   },
+  "internal/activity/page.go": {
+   "articles": [
+    "arch-matching"
+   ],
+   "tests": [
+    "internal/activity/page_test.go"
+   ]
+  },
   "internal/capture/progress.go": {
    "articles": [
     "arch-capture"
@@ -84,6 +92,16 @@
    "tests": [
     "internal/dryrun/worker_test.go",
     "internal/match/match_test.go"
+   ]
+  },
+  "internal/store/store.go": {
+   "articles": [
+    "arch-matching"
+   ],
+   "tests": [
+    "internal/activity/page_test.go",
+    "internal/dryrun/worker_test.go",
+    "internal/store/store_test.go"
    ]
   }
  },

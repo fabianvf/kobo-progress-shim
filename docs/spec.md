@@ -1,6 +1,6 @@
 # Spec: Kobo progress to Hardcover
 
-Status: draft for sign-off. Based on the interview and one capture session on
+Status: signed off 2026-11-02. Based on the interview and one capture session on
 2026-11-02 (Kobo N873, firmware 4.38.23852, CWA v4.0.8, 56 Kobo requests).
 
 ## Goal
@@ -70,6 +70,15 @@ Status:
 - Otherwise: no write.
 - A book already marked read stays read. Re-reads aren't tracked.
 
+Ratings:
+
+- A rating on the Kobo sets the rating on Hardcover, once the book is matched.
+- Only a new rating action writes. Syncs never touch a rating set on Hardcover.
+- The request is `POST /v1/products/<id>/rating/<stars>`. Its response doesn't
+  matter, because CWA answers 404 for its own books and the rating is still real.
+- That id is the store's `RevisionId`, which differs from the EntitlementId on Libby
+  books, so the store lookup also saves `RevisionId` to connect them.
+
 Hardcover writes:
 
 - One user_book per book and one read row per user_book, created if missing and
@@ -98,9 +107,11 @@ Hardcover token is logged or stored.
 ## Not verified
 
 - Store books. Expected to behave like Libby books, not seen yet.
-- The store lookup with auth from a live PUT, and for a store book. It returned
-  ISBN, title and author for three Libby loans, using the device's stored token.
+- A CWA book's not-found response from the store lookup. The lookup itself works
+  live: a Libby and a store book each returned ISBN, title and author.
 - A newly added Libby or store book appearing in sync with metadata.
+- A rating on a Libby or store book. Only a CWA book's rating has been seen, and its
+  id matched its EntitlementId.
 - Hardcover's schema and rate limits. The docs page returned 403 and the limit is
   from a search excerpt.
 - Whether `/v1/initialization` listing `library_sync` at storeapi.kobo.com matters.
@@ -108,5 +119,4 @@ Hardcover token is logged or stored.
 
 ## Out of scope
 
-Highlights, audiobooks, USB sideloads, re-read counts, and ratings. The capture did
-show a rating event, so ratings could be added later.
+Highlights, audiobooks, USB sideloads and re-read counts.

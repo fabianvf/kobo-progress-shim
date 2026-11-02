@@ -2,10 +2,12 @@
 id: arch-matching
 covers:
   - cmd/match-eval/**
+  - internal/activity/**
   - internal/dryrun/**
   - internal/hardcover/**
   - internal/kobostore/**
   - internal/match/**
+  - internal/store/**
 see_also:
   - arch-capture
   - arch-kobo-traffic
@@ -29,7 +31,13 @@ KoboReader.sqlite is never an input. It's the answer key for cmd/match-eval, and
 a system that read it would need USB access that the live path doesn't have.
 
 Kobo auth stays in memory for one store call. capture.Progress holds it, so never
-print that struct whole. dryrun.Entry has no auth field and is what gets logged.
+print that struct whole or save it. store.Book has no auth field.
+
+A match chosen by hand outlives later syncs. Only an unresolved book takes new
+metadata from sync, otherwise a sync would undo a correction.
+
+A store that won't open disables matching and leaves the proxy running, because
+the Kobo's path must not depend on it.
 
 ## GOTCHA
 
@@ -47,7 +55,16 @@ reason title and author alone go to review. Hardcover can also merge books, so a
 saved id may move (merged_at, original_book_id on user_books).
 
 CWA's books aren't in the store, so a lookup for one should return not found. Their
-signals have to come from sync entries or metadata.db, which isn't built yet.
+title and author come from sync entries. A book already on the device before the
+store existed has no entry until CWA next sends one. Reading metadata.db for a
+hardcover-id isn't built.
+
+A rating request uses the store's RevisionId, not the EntitlementId, and CWA answers
+404 for its own books. Only a CWA book's rating has been seen. Ratings are the first
+thing to drop if that link proves unreliable.
+
+The store lookup returned 403 until it forwarded the device's headers, as CWA does.
+Which header matters isn't known, so don't trim the list without testing.
 
 ## DECISION
 
@@ -67,12 +84,9 @@ The last run on 77 books: 72 automatic and 5 review with ISBN, title and author;
 automatic and 13 review with title and author, with no conflicts between them. Those
 answers aren't checked by hand and the first row has no independent check.
 
-Not yet seen: a store book through the lookup, and a successful lookup using auth
-from a live PUT. v0.2.0 sent only Authorization, User-Agent and Accept from the live
-PUT and got 403 on two books. A one-off script using the device's stored token with
-those same headers got 200, so the sidecar now forwards the device's headers the way
-CWA does, apart from hop, session and body headers. That's a likely fix, not a
-confirmed one.
+Live on v0.2.1: a Libby and a store book each returned ISBN, title and author, and
+both matched automatically when run through the matcher separately. Not yet seen:
+a CWA book's not-found response, or a new book arriving in sync.
 
 ## SEE ALSO
 

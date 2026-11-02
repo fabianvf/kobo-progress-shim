@@ -1,11 +1,11 @@
-// Package dryrun identifies books from live progress and logs what it would do.
-// It writes nothing to Hardcover and nothing it does can reach the Kobo.
+// Package dryrun identifies books from live traffic and records what it would
+// do. It writes nothing to Hardcover and nothing it does can reach the Kobo.
 package dryrun
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -14,51 +14,46 @@ import (
 	"github.com/fabianvf/kobo-progress-shim/internal/capture"
 	"github.com/fabianvf/kobo-progress-shim/internal/kobostore"
 	"github.com/fabianvf/kobo-progress-shim/internal/match"
+	"github.com/fabianvf/kobo-progress-shim/internal/store"
 )
 
-const queueSize = 64
+const queueSize = 256
+
+// Hardcover shelves, by what the Kobo reported.
+const (
+	shelfReading = "reading"
+	shelfRead    = "read"
+)
 
 // Store is the Kobo metadata lookup.
 type Store interface {
 	Metadata(ctx context.Context, id string, device http.Header) (kobostore.Metadata, error)
 }
 
-// Entry is one log line. It has no auth field, so it is safe to marshal whole.
-type Entry struct {
-	EntitlementID string   `json:"entitlement_id"`
-	Percent       int      `json:"percent"`
-	Status        string   `json:"status"`
-	LookupResult  string   `json:"lookup_result"`
-	Title         string   `json:"title,omitempty"`
-	Authors       []string `json:"authors,omitempty"`
-	ISBN          string   `json:"isbn,omitempty"`
-	ISBNFrom      string   `json:"isbn_from,omitempty"`
-	Outcome       string   `json:"outcome,omitempty"`
-	BookID        int      `json:"hardcover_book_id,omitempty"`
-	Reason        string   `json:"reason,omitempty"`
-	Suggestion    string   `json:"suggestion,omitempty"`
-}
-
 type Worker struct {
-	store  Store
+	kobo   Store
 	lookup match.Lookup // nil when there's no Hardcover token
-	queue  chan capture.Progress
-	known  map[string]Entry
+	books  *store.Store
+	queue  chan any
 	done   sync.WaitGroup
 }
 
-func New(store Store, lookup match.Lookup) *Worker {
-	w := &Worker{store: store, lookup: lookup, queue: make(chan capture.Progress, queueSize), known: map[string]Entry{}}
+func New(kobo Store, lookup match.Lookup, books *store.Store) *Worker {
+	w := &Worker{kobo: kobo, lookup: lookup, books: books, queue: make(chan any, queueSize)}
 	w.done.Add(1)
 	go w.run()
 	return w
 }
 
-// Submit never blocks. A dropped event is harmless because the next page turn
-// and sync report the same book again.
-func (w *Worker) Submit(p capture.Progress) {
+// These never block. A dropped event is harmless because the Kobo reports the
+// book again on its next page turn and sync.
+func (w *Worker) Progress(p capture.Progress)     { w.submit(p) }
+func (w *Worker) Rating(r capture.Rating)         { w.submit(r) }
+func (w *Worker) SyncedBook(b capture.SyncedBook) { w.submit(b) }
+
+func (w *Worker) submit(item any) {
 	select {
-	case w.queue <- p:
+	case w.queue <- item:
 	default:
 		log.Print("dryrun queue full, event dropped")
 	}
@@ -71,12 +66,12 @@ func (w *Worker) Close() {
 
 func (w *Worker) run() {
 	defer w.done.Done()
-	for p := range w.queue {
-		w.handle(p)
+	for item := range w.queue {
+		w.handle(item)
 	}
 }
 
-func (w *Worker) handle(p capture.Progress) {
+func (w *Worker) handle(item any) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			log.Printf("dryrun failed: %T", recovered)
@@ -84,61 +79,149 @@ func (w *Worker) handle(p capture.Progress) {
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	entry := w.identify(ctx, p)
-	entry.Percent, entry.Status = p.Percent, p.Status
-	line, err := json.Marshal(entry)
-	if err != nil {
-		log.Printf("dryrun marshal failed: %T", err)
-		return
+	var err error
+	switch v := item.(type) {
+	case capture.Progress:
+		err = w.handleProgress(ctx, v)
+	case capture.Rating:
+		err = w.handleRating(ctx, v)
+	case capture.SyncedBook:
+		err = w.handleSynced(ctx, v)
 	}
-	log.Printf("dryrun %s", line)
+	if err != nil {
+		log.Printf("dryrun: %v", err)
+	}
 }
 
-// identify remembers an answer only once it's complete, so a failed lookup is
-// tried again on the book's next progress update.
-func (w *Worker) identify(ctx context.Context, p capture.Progress) Entry {
-	if known, ok := w.known[p.EntitlementID]; ok {
-		return known
+func (w *Worker) handleSynced(ctx context.Context, s capture.SyncedBook) error {
+	b, _, err := w.books.Get(ctx, s.EntitlementID)
+	if err != nil {
+		return err
 	}
-	entry := Entry{EntitlementID: p.EntitlementID}
-	complete := true
-
-	signals := match.Signals{}
-	meta, err := w.store.Metadata(ctx, p.EntitlementID, p.Headers)
-	switch {
-	case err == nil:
-		entry.LookupResult = "found"
-		signals.Title, signals.Authors, signals.ISBN = meta.Title, meta.Contributors, meta.ISBN
-		if meta.ISBN != "" {
-			entry.ISBNFrom = "store"
+	b.EntitlementID, b.RevisionID = s.EntitlementID, s.RevisionID
+	if !b.Resolved() {
+		b.Title, b.Authors = s.Title, s.Authors
+		if s.ISBN != "" {
+			b.ISBN, b.ISBNFrom = s.ISBN, "sync"
 		}
-	case errors.Is(err, kobostore.ErrNotFound):
-		entry.LookupResult = "not_found"
-	default:
-		entry.LookupResult = "error: " + err.Error()
-		complete = false
+		b.Outcome = "" // more signals, so decide again on the next progress
 	}
-	if signals.ISBN == "" {
-		if signals.ISBN = match.ISBNFromPath(p.Source); signals.ISBN != "" {
-			entry.ISBNFrom = "bookmark"
-		}
-	}
-	entry.Title, entry.Authors, entry.ISBN = signals.Title, signals.Authors, signals.ISBN
+	return w.books.Put(ctx, b)
+}
 
-	if w.lookup != nil {
-		decision, err := match.Decide(ctx, w.lookup, signals)
-		if err != nil {
-			entry.Reason = "hardcover error: " + err.Error()
-			complete = false
-		} else {
-			entry.Outcome, entry.BookID, entry.Reason = string(decision.Outcome), decision.BookID, decision.Reason
-			if len(decision.Candidates) > 0 {
-				entry.Suggestion = decision.Candidates[0].Title
+func (w *Worker) handleProgress(ctx context.Context, p capture.Progress) error {
+	b, _, err := w.books.Get(ctx, p.EntitlementID)
+	if err != nil {
+		return err
+	}
+	b.EntitlementID = p.EntitlementID
+	w.identify(ctx, &b, p)
+	b.Percent, b.Status = p.Percent, p.Status
+	detail := nextAction(&b, p)
+	if err := w.books.Put(ctx, b); err != nil {
+		return err
+	}
+	return w.record(ctx, b, detail)
+}
+
+// identify keeps a result only once it's final, so a failed lookup or Hardcover
+// call is tried again on the book's next progress.
+func (w *Worker) identify(ctx context.Context, b *store.Book, p capture.Progress) {
+	if b.Lookup != "found" && b.Lookup != "not_found" {
+		meta, err := w.kobo.Metadata(ctx, p.EntitlementID, p.Headers)
+		switch {
+		case err == nil:
+			b.Lookup = "found"
+			b.RevisionID = meta.RevisionID
+			b.Title, b.Authors = meta.Title, meta.Contributors
+			if meta.ISBN != "" {
+				b.ISBN, b.ISBNFrom = meta.ISBN, "store"
 			}
+			b.Outcome = ""
+		case errors.Is(err, kobostore.ErrNotFound):
+			b.Lookup = "not_found"
+		default:
+			b.Lookup = "error: " + err.Error()
 		}
 	}
-	if complete {
-		w.known[p.EntitlementID] = entry
+	if b.ISBN == "" {
+		if isbn := match.ISBNFromPath(p.Source); isbn != "" {
+			b.ISBN, b.ISBNFrom = isbn, "bookmark"
+		}
 	}
-	return entry
+	lookupFailed := b.Lookup != "found" && b.Lookup != "not_found"
+	if b.Outcome != "" || w.lookup == nil || lookupFailed {
+		return
+	}
+	decision, err := match.Decide(ctx, w.lookup, match.Signals{ISBN: b.ISBN, Title: b.Title, Authors: b.Authors})
+	if err != nil {
+		b.Reason = "hardcover error: " + err.Error()
+		return
+	}
+	b.Outcome, b.HardcoverID, b.Reason, b.Suggestion = string(decision.Outcome), decision.BookID, decision.Reason, ""
+	if len(decision.Candidates) > 0 {
+		c := decision.Candidates[0]
+		b.Suggestion = fmt.Sprintf("%d: %s", c.ID, c.Title)
+	}
+}
+
+// nextAction applies the status rules: finished or 100% is read, above 1% is
+// reading, and a book already read stays read.
+func nextAction(b *store.Book, p capture.Progress) string {
+	want := ""
+	switch {
+	case p.Status == "Finished" || p.Percent >= 100:
+		want = shelfRead
+	case p.Status == "Reading" && p.Percent > 1:
+		want = shelfReading
+	}
+	if b.Shelf == shelfRead {
+		want = shelfRead
+	}
+	if want != "" {
+		b.Shelf = want
+	}
+	switch {
+	case want == "":
+		return fmt.Sprintf("no action at %d%%", p.Percent)
+	case !b.Resolved():
+		return fmt.Sprintf("%s at %d%%, not written: %s", want, p.Percent, unresolvedReason(*b))
+	}
+	return fmt.Sprintf("would set %s at %d%% on Hardcover book %d", want, p.Percent, b.HardcoverID)
+}
+
+func unresolvedReason(b store.Book) string {
+	switch {
+	case b.Outcome == "review":
+		return "needs review (" + b.Reason + ")"
+	case b.Reason != "":
+		return b.Reason
+	case b.Lookup != "found" && b.Lookup != "not_found":
+		return "lookup " + b.Lookup
+	}
+	return "not matched yet"
+}
+
+func (w *Worker) handleRating(ctx context.Context, r capture.Rating) error {
+	b, ok, err := w.books.ByRevision(ctx, r.ProductID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return w.books.AddEvent(ctx, store.Event{Time: time.Now(), EntitlementID: r.ProductID, Detail: fmt.Sprintf("%d stars for an unknown product, not written", r.Stars)})
+	}
+	b.Rating = r.Stars
+	if err := w.books.Put(ctx, b); err != nil {
+		return err
+	}
+	detail := fmt.Sprintf("%d stars, not written: %s", r.Stars, unresolvedReason(b))
+	if b.Resolved() {
+		detail = fmt.Sprintf("would rate %d stars on Hardcover book %d", r.Stars, b.HardcoverID)
+	}
+	return w.record(ctx, b, detail)
+}
+
+func (w *Worker) record(ctx context.Context, b store.Book, detail string) error {
+	log.Printf("dryrun %s %q: %s", b.EntitlementID, b.Title, detail)
+	return w.books.AddEvent(ctx, store.Event{Time: time.Now(), EntitlementID: b.EntitlementID, Title: b.Title, Detail: detail})
 }

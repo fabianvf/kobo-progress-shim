@@ -95,16 +95,106 @@ func progressFrom(e *Exchange) []Progress {
 	return out
 }
 
+// Rating is a star rating the Kobo sent. ProductID is the store's RevisionId,
+// which isn't the EntitlementId on store and Libby books.
+type Rating struct {
+	ProductID string
+	Stars     int
+}
+
+var ratingPath = regexp.MustCompile(`^/kobo/[^/]+/v1/products/([0-9a-fA-F-]{36})/rating/([1-5])(\?|$)`)
+
+// ratingFrom ignores the response status. CWA answers 404 for its own books, and
+// the rating is still what the reader chose.
+func ratingFrom(e *Exchange) (Rating, bool) {
+	if e.Method != "POST" {
+		return Rating{}, false
+	}
+	m := ratingPath.FindStringSubmatch(e.RequestURI)
+	if m == nil {
+		return Rating{}, false
+	}
+	return Rating{ProductID: m[1], Stars: int(m[2][0] - '0')}, true
+}
+
+// SyncedBook is a book's metadata from a sync response. It's the only source for
+// CWA's books, which the store doesn't know.
+type SyncedBook struct {
+	EntitlementID string
+	RevisionID    string
+	Title         string
+	Authors       []string
+	ISBN          string
+}
+
+var syncPath = regexp.MustCompile(`^/kobo/[^/]+/v1/library/sync(\?|$)`)
+
+func syncedBooksFrom(e *Exchange) []SyncedBook {
+	if e.Method != "GET" || e.Status != 200 || !syncPath.MatchString(e.RequestURI) {
+		return nil
+	}
+	raw, truncated := e.ResponseBody.snapshot()
+	if truncated {
+		return nil
+	}
+	raw, err := decoded(raw, e.ResponseHeader)
+	if err != nil {
+		return nil
+	}
+	type entitlement struct {
+		BookMetadata *struct {
+			EntitlementID string   `json:"EntitlementId"`
+			RevisionID    string   `json:"RevisionId"`
+			Title         string   `json:"Title"`
+			Contributors  []string `json:"Contributors"`
+			ISBN          string   `json:"Isbn"`
+		} `json:"BookMetadata"`
+	}
+	var entries []struct {
+		New     *entitlement `json:"NewEntitlement"`
+		Changed *entitlement `json:"ChangedEntitlement"`
+	}
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return nil
+	}
+	var out []SyncedBook
+	for _, entry := range entries {
+		item := entry.New
+		if item == nil {
+			item = entry.Changed
+		}
+		if item == nil || item.BookMetadata == nil || item.BookMetadata.EntitlementID == "" {
+			continue
+		}
+		m := item.BookMetadata
+		out = append(out, SyncedBook{EntitlementID: m.EntitlementID, RevisionID: m.RevisionID, Title: m.Title, Authors: m.Contributors, ISBN: m.ISBN})
+	}
+	return out
+}
+
+// Observer receives what the Kobo reports. Its methods must not block.
+type Observer interface {
+	Progress(Progress)
+	Rating(Rating)
+	SyncedBook(SyncedBook)
+}
+
 func (r *Recorder) observe(exchange *Exchange) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("progress observer failed: %T", recovered)
+			log.Printf("observer failed: %T", recovered)
 		}
 	}()
-	if r.OnProgress == nil {
+	if r.Observer == nil {
 		return
 	}
+	for _, b := range syncedBooksFrom(exchange) {
+		r.Observer.SyncedBook(b)
+	}
 	for _, p := range progressFrom(exchange) {
-		r.OnProgress(p)
+		r.Observer.Progress(p)
+	}
+	if rating, ok := ratingFrom(exchange); ok {
+		r.Observer.Rating(rating)
 	}
 }

@@ -1,6 +1,7 @@
-// kobo-capture is the Phase 0 pass-through proxy. It forwards all traffic to
-// CWA and writes a redacted JSONL record of each exchange. Capture is best
-// effort: nothing it does may change or delay what the Kobo sees.
+// kobo-capture is the pass-through proxy. It forwards all traffic to CWA, writes
+// a redacted JSONL record of each exchange, and works out in dry-run what it
+// would send to Hardcover. All of that is best effort: nothing it does may change
+// or delay what the Kobo sees.
 package main
 
 import (
@@ -10,11 +11,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/fabianvf/kobo-progress-shim/internal/activity"
 	"github.com/fabianvf/kobo-progress-shim/internal/capture"
 	"github.com/fabianvf/kobo-progress-shim/internal/dryrun"
 	"github.com/fabianvf/kobo-progress-shim/internal/hardcover"
 	"github.com/fabianvf/kobo-progress-shim/internal/kobostore"
 	"github.com/fabianvf/kobo-progress-shim/internal/match"
+	"github.com/fabianvf/kobo-progress-shim/internal/store"
 )
 
 func main() {
@@ -26,20 +29,30 @@ func main() {
 	recorder := capture.NewRecorder(env("CAPTURE_FILE", "/data/capture.jsonl"))
 	defer recorder.Close()
 
-	// Optional: without a token the worker logs store lookups but doesn't match.
-	var lookup match.Lookup
-	if token := os.Getenv("HARDCOVER_API_KEY"); token != "" {
-		lookup = hardcover.New(token)
+	admin := http.NewServeMux()
+	admin.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// A store that won't open costs the matching, never the Kobo's path.
+	books, err := store.Open(env("STORE_FILE", "/data/shim.db"))
+	if err != nil {
+		log.Printf("matching disabled: %v", err)
+	} else {
+		defer books.Close()
+		// Optional: without a token the worker saves lookups but doesn't match.
+		var lookup match.Lookup
+		if token := os.Getenv("HARDCOVER_API_KEY"); token != "" {
+			lookup = hardcover.New(token)
+		}
+		worker := dryrun.New(kobostore.New(), lookup, books)
+		defer worker.Close()
+		recorder.Observer = worker
+		activity.Register(admin, books)
 	}
-	worker := dryrun.New(kobostore.New(), lookup)
-	recorder.OnProgress = worker.Submit
 
 	go func() {
-		mux := http.NewServeMux()
-		mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		})
-		log.Print(http.ListenAndServe(env("ADMIN_ADDR", ":8081"), mux))
+		log.Print(http.ListenAndServe(env("ADMIN_ADDR", ":8081"), admin))
 	}()
 
 	server := &http.Server{

@@ -23,6 +23,7 @@ type Metadata struct {
 	Title        string   `json:"Title"`
 	Contributors []string `json:"Contributors"`
 	ISBN         string   `json:"Isbn"`
+	RevisionID   string   `json:"RevisionId"`
 }
 
 type Client struct {

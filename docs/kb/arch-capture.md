@@ -30,10 +30,10 @@ dropped, because it can't be redacted. CWA's token is a path segment that also
 appears inside returned download URLs, so it is scrubbed from every string, not
 only the request line.
 
-The progress observer runs on the recorder's goroutine, after the Kobo already has
-its response, so OnProgress must not block. It reads the unredacted exchange,
-because a store lookup needs the Kobo's auth. See arch-matching for how that stays
-out of logs.
+The Observer runs on the recorder's goroutine, after the Kobo already has its
+response, so its methods must not block. It reads the unredacted exchange, because
+a store lookup needs the Kobo's auth. See arch-matching for how that stays out of
+logs.
 
 The file's size cap must stay under the volume's sizeLimit. Breaching sizeLimit
 evicts the pod, which takes down the Kobo's path along with the capture.
