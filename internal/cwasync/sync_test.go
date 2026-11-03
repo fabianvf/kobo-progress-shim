@@ -276,11 +276,21 @@ func TestCollectionsFollowHardcover(t *testing.T) {
 		t.Fatalf("a list named like a status shared its shelf: %v", lib.names)
 	}
 
-	// A second run with nothing changed sends nothing.
+	// A second run with nothing changed only checks each collection is there.
 	lib.calls = nil
 	syncer(lib, s, hc, false).Once(ctx)
-	if len(lib.calls) != 0 {
-		t.Fatalf("calls = %v", lib.calls)
+	for _, c := range lib.calls {
+		if !strings.HasPrefix(c, "rename ") {
+			t.Fatalf("calls = %v", lib.calls)
+		}
+	}
+
+	// One deleted on the Kobo, with nothing else changed, is made again.
+	delete(lib.tags, "tag-Hardcover")
+	delete(lib.names, "tag-Hardcover")
+	syncer(lib, s, hc, false).Once(ctx)
+	if got := lib.tags["tag-Hardcover"]; len(got) != 3 {
+		t.Fatalf("Hardcover not made again: %v", got)
 	}
 
 	// Moved shelves, a renamed list, a deleted list, and one deleted on the Kobo.

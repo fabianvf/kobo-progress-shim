@@ -139,16 +139,18 @@ func (s *Syncer) keep(ctx context.Context, a Account, c store.Collection, ok boo
 			return err
 		}
 	}
-	if c.Name != want.name {
-		if err := s.cwa.RenameTag(ctx, a.KoboToken, c.TagID, want.name); errors.Is(err, ErrGone) {
-			return s.create(ctx, a, want)
-		} else if err != nil {
-			return err
-		}
-		c.Name = want.name
+	// The rename runs every time, unchanged or not, because it's also how a
+	// collection deleted on the Kobo is noticed: CWA deletes the shelf with it,
+	// and there's no other way to ask whether a shelf still exists.
+	if err := s.cwa.RenameTag(ctx, a.KoboToken, c.TagID, want.name); errors.Is(err, ErrGone) {
+		s.note(ctx, a, "collection "+want.name+" was deleted, making it again")
+		return s.create(ctx, a, want)
+	} else if err != nil {
+		return err
 	}
+	c.Name = want.name
 	add, remove := diff(c.Items, want.items)
-	if len(add) == 0 && len(remove) == 0 && c.Name == want.name {
+	if len(add) == 0 && len(remove) == 0 {
 		return s.books.PutCollection(ctx, a.Key, c)
 	}
 	if len(add) > 0 {

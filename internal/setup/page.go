@@ -226,7 +226,7 @@ func (p *Page) save(w http.ResponseWriter, r *http.Request) {
 			a = accounts.Account{Email: email, CWAPassword: password}
 			// Two emails can share the part before the @, so a taken name gets a number.
 			for n := 1; n <= 5; n++ {
-				a.CWAUser = cwaName(email)
+				a.CWAUser = cwaName(user, email)
 				if n > 1 {
 					a.CWAUser = fmt.Sprintf("%s-%d", a.CWAUser, n)
 				}
@@ -254,10 +254,15 @@ func (p *Page) save(w http.ResponseWriter, r *http.Request) {
 
 var unsafeName = regexp.MustCompile(`[^a-z0-9._-]+`)
 
-// cwaName is the CWA username for an email, which nobody sees.
-func cwaName(email string) string {
-	local, _, _ := strings.Cut(strings.ToLower(email), "@")
-	return "kobo-" + unsafeName.ReplaceAllString(local, "-")
+// cwaName is the reader's Hardcover username, which is unique on Hardcover and
+// what they know themselves by. The email's first part stands in if it's empty.
+func cwaName(hardcoverUser, email string) string {
+	name := strings.Trim(unsafeName.ReplaceAllString(strings.ToLower(hardcoverUser), "-"), "-")
+	if name == "" {
+		local, _, _ := strings.Cut(strings.ToLower(email), "@")
+		name = "reader-" + unsafeName.ReplaceAllString(local, "-")
+	}
+	return name
 }
 
 // newPassword is random, plus one of each character class in case CWA's

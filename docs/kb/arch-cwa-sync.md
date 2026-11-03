@@ -51,7 +51,9 @@ worker saves whole books across slow network calls and would overwrite it.
 Collections only change what the sync added. A book added on the Kobo stays, and
 one the sync added and the Kobo removed comes back only if it changes on Hardcover.
 "Hardcover" holds every book on any shelf or list, which for a shelf-only account
-is everything on the device. A collection deleted on the Kobo is made again.
+is everything on the device. A collection deleted on the Kobo is made again: each
+run renames every collection to its own name, the only way to ask CWA whether a
+shelf still exists, and a gone one is recreated.
 
 Progress goes to CWA only for a copy the Kobo has never opened, with no bookmark
 location. After that the Kobo owns its place in the book.
@@ -75,8 +77,8 @@ with an email (ACCOUNT_EMAIL, or email in ACCOUNTS_FILE) is shown on the page bu
 not changed there, and setup won't make that email a second account. Accounts made there
 are sealed with ACCOUNTS_KEY, which the store never holds, and can't claim a Kobo
 a configured account already has. The page shows the signed-in reader their own
-CWA login, for browsing on the web. The CWA username is kobo- and the part of the
-email before the @, with a number added if another email already has it. Their CWA user has no password-change role,
+CWA login, for browsing on the web. The CWA username is the reader's Hardcover
+username, with a number added if CWA already has that name. Their CWA user has no password-change role,
 because the shim needs that password to mark their shelves to sync.
 
 ## GOTCHA
@@ -110,6 +112,10 @@ as collections, unless it's given its CWA login (ACCOUNT_CWA_USER and
 ACCOUNT_CWA_PASSWORD). Then the shim marks its existing collections to sync too,
 finding each shelf's id by name in the page's sidebar, which must happen before
 that account is switched to shelf-only sync or its Kobo empties.
+
+A Kobo only hears a collection was deleted when it syncs with the account that
+owned it. Moving a Kobo to another CWA account leaves the old account's
+collections on the device, which the reader deletes by hand.
 
 CWA marks its session cookie Secure when it enforces HTTPS or OAuth is on, and the
 shim reaches it over plain HTTP in the pod, so sessions use a jar that sends the

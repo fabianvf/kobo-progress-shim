@@ -111,10 +111,10 @@ func TestJoiningMakesOneAccount(t *testing.T) {
 		t.Fatalf("page = %s", page)
 	}
 	body(t, func() (*http.Response, error) { return http.PostForm(s.URL, url.Values{"hardcover_key": {"good-key"}}) })
-	if len(cwa.created) != 1 || cwa.created[0] != "kobo-brother/Brother@Example.com" {
+	if len(cwa.created) != 1 || cwa.created[0] != "brother/Brother@Example.com" {
 		t.Fatalf("created = %v", cwa.created)
 	}
-	if page := body(t, func() (*http.Response, error) { return http.Get(s.URL) }); !strings.Contains(page, "kobo-brother") {
+	if page := body(t, func() (*http.Response, error) { return http.Get(s.URL) }); !strings.Contains(page, "<pre id=\"cwa-user\">brother</pre>") {
 		t.Fatalf("CWA login not shown: %s", page)
 	}
 	a, _, ok := reg.ByEmail("Brother@Example.com")
@@ -205,10 +205,10 @@ func TestAccessChecksTheToken(t *testing.T) {
 }
 
 func TestTakenNameGetsANumber(t *testing.T) {
-	reg, cwa := registry(t), &fakeCWA{taken: map[string]bool{"kobo-brother": true}}
+	reg, cwa := registry(t), &fakeCWA{taken: map[string]bool{"brother": true}}
 	s := server(t, fixedIdentity("brother@work.example"), reg, cwa)
 	body(t, func() (*http.Response, error) { return http.PostForm(s.URL, url.Values{"hardcover_key": {"good-key"}}) })
-	if a, _, ok := reg.ByEmail("brother@work.example"); !ok || a.CWAUser != "kobo-brother-2" {
+	if a, _, ok := reg.ByEmail("brother@work.example"); !ok || a.CWAUser != "brother-2" {
 		t.Fatalf("account = %+v, created %v", a, cwa.created)
 	}
 }
