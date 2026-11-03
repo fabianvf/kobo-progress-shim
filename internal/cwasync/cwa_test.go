@@ -164,3 +164,37 @@ func TestMarkShelfSyncedFindsTheShelfByName(t *testing.T) {
 		t.Error("a missing shelf wasn't an error")
 	}
 }
+
+func TestSessionHidesALoopbackHost(t *testing.T) {
+	var hosts []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hosts = append(hosts, r.Host)
+		switch {
+		case r.URL.Path == "/login" && r.Method == http.MethodGet:
+			io.WriteString(w, `<input type="hidden" name="csrf_token" value="tok">`)
+		case r.URL.Path == "/login":
+			http.Redirect(w, r, "/", http.StatusFound)
+		case strings.HasPrefix(r.URL.Path, "/kobo_auth/generate_auth_token/"):
+			if strings.HasPrefix(r.Host, "127.") || strings.HasPrefix(r.Host, "localhost") {
+				io.WriteString(w, `Please access Calibre-Web Automated from non localhost`)
+				return
+			}
+			io.WriteString(w, `api_endpoint=https://x/kobo/0123456789abcdef0123456789abcdef`)
+		}
+	}))
+	defer server.Close()
+	base, _ := url.Parse(server.URL + "/") // 127.0.0.1:<port>
+	s, err := Login(context.Background(), base, "robot", "pw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := s.KoboToken(context.Background(), 6)
+	if err != nil || token != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("token %q, err %v", token, err)
+	}
+	for _, h := range hosts {
+		if !strings.HasPrefix(h, "cwa.internal:") {
+			t.Fatalf("CWA saw Host %q", h)
+		}
+	}
+}

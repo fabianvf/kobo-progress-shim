@@ -118,6 +118,12 @@ cookies back anyway. A standard jar would drop them and logins would quietly fai
 The Kobo API's create returns the user's existing shelf of the same name, so the
 sync makes names unique, and a person's own shelf with the same name is adopted.
 
+CWA hides a user's Kobo token from a request whose Host is localhost
+(cps/kobo_auth.py:76-90), and the shim reaches CWA as localhost in the pod, so its
+web sessions send Host cwa.internal instead. The first in-cluster signup, on
+2026-11-03, failed on exactly this. A signup that fails after creating the user
+deletes that user, so a retry doesn't hit a taken name.
+
 CWA's new-user form answers 200 whether or not it worked, ignoring the redirect
 its handler returns (cps/admin.py:1671-1683), so the user is looked up afterwards.
 Its refusal is in the page's alert, which is safe to log.

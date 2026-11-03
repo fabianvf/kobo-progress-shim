@@ -114,7 +114,15 @@ func (s *Session) CreateUser(ctx context.Context, u NewUser) (int, string, error
 		return 0, "", fmt.Errorf("cwa: creating user: status %d", status)
 	}
 	token, err := s.KoboToken(ctx, id)
-	return id, token, err
+	if err != nil {
+		// A user with no usable token is no account at all, and would make the
+		// next try fail on a taken name, so it goes.
+		if delErr := s.DeleteUser(ctx, id); delErr != nil {
+			return 0, "", fmt.Errorf("%w, and removing the half-made user failed: %v", err, delErr)
+		}
+		return 0, "", err
+	}
+	return id, token, nil
 }
 
 // UserID finds a CWA user by name.
@@ -188,6 +196,7 @@ func (s *Session) postBody(ctx context.Context, page, path string, form url.Valu
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("X-CSRFToken", string(m[1]))
+	req.Host = s.host()
 	resp, err := s.http.Do(req)
 	if err != nil {
 		return 0, nil, fmt.Errorf("cwa: %s: %w", path, unwrapURL(err))
@@ -214,6 +223,7 @@ func (s *Session) get(ctx context.Context, path string) ([]byte, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
+	req.Host = s.host()
 	resp, err := s.http.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("cwa: %s: %w", strings.SplitN(path, "?", 2)[0], unwrapURL(err))
@@ -221,6 +231,22 @@ func (s *Session) get(ctx context.Context, path string) ([]byte, int, error) {
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	return data, resp.StatusCode, err
+}
+
+// localName stands in for a loopback host. CWA hides a user's Kobo token from a
+// request whose Host is localhost (cps/kobo_auth.py:76-90), which is how the shim
+// reaches it inside the pod. The name only reaches CWA's Host check, nothing else.
+const localName = "cwa.internal"
+
+func (s *Session) host() string {
+	h := s.base.Hostname()
+	if h == "localhost" || strings.HasPrefix(h, "127.") || h == "::1" {
+		if port := s.base.Port(); port != "" {
+			return localName + ":" + port
+		}
+		return localName
+	}
+	return s.base.Host
 }
 
 func unwrapURL(err error) error {

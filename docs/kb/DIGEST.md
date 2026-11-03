@@ -28,7 +28,7 @@ Sizes are estimates (4 chars/token). `->` is an outbound edge; `gated by` must b
 
 ## arch-cwa-sync
 
-`article` · ~2.3k tokens
+`article` · ~2.4k tokens
 
 - owns: internal/accounts/**, internal/cwasync/**, internal/setup/**, internal/wanted/**
 - -> arch-kobo-traffic, arch-matching
@@ -40,7 +40,7 @@ Sizes are estimates (4 chars/token). `->` is an outbound edge; `gated by` must b
 - **GOTCHA**: Read status in CWA is per user, and its Kobo sync reads only that user's status.
 - **GOTCHA**: CWA's state PUT handler needs a CurrentBookmark with ProgressPercent and ContentSourceProgressPercent and a Statistics key, or it answers 400 or 500...
 - **GOTCHA**: A state GET creates an unread state for a book that had none, which the Kobo then receives on its next sync.
-- **GOTCHA**: (+9 more, in the article)
+- **GOTCHA**: (+10 more, in the article)
 
 ## arch-kobo-traffic
 
