@@ -21,7 +21,7 @@
   "internal/kobostore/client.go": "363c5ae0657d736244dca31feab98acf458f1bbd2c4256372439672ad37fde1e",
   "internal/match/match.go": "7840885db41aca2b849df83dd16151b4826c7528bfbb70ff7e3395d81a0e8532",
   "internal/setup/access.go": "5197240bc59263338ca777ea137570436272fb947582c606f87704ee072de549",
-  "internal/setup/page.go": "bf83cc85f12ae05b78c76bb39070e193cd69f5f23e7bb408bf48fb0360158a44",
+  "internal/setup/page.go": "a205420c3992827df39d3c2e2efce259f9679e2517a8141e0b693f506081bf4e",
   "internal/store/store.go": "bdb295c10a7bc4399217053453a3e33c563bc1f7aa801d3b4fca2b2478c90ca8",
   "internal/wanted/clients.go": "6a6d4eadcd4e28cb4eac3dde524e5e7d3dce1356f680016f64918f213d285849",
   "internal/wanted/wanted.go": "ec87227881f94d9adebf9cfa99d670a01c357170b4f30e33d57c1aa7a4d2c865"

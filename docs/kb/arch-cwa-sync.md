@@ -65,7 +65,9 @@ keys with the application's AUD, issuer and expiry. On the LAN the setup port ca
 be reached without passing Access, so a bare email header proves nothing. Each
 email gets one account and can only see or change its own. Accounts made there
 are sealed with ACCOUNTS_KEY, which the store never holds, and can't claim a Kobo
-a configured account already has.
+a configured account already has. The page shows the signed-in reader their own
+CWA login, for browsing on the web. Their CWA user has no password-change role,
+because the shim needs that password to mark their shelves to sync.
 
 ## GOTCHA
 

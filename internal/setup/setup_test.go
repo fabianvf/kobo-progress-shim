@@ -92,7 +92,7 @@ func body(t *testing.T, call func() (*http.Response, error)) string {
 func TestJoiningMakesOneAccount(t *testing.T) {
 	reg, cwa := registry(t), &fakeCWA{}
 	s := server(t, fixedIdentity("Brother@Example.com"), reg, cwa)
-	if page := body(t, func() (*http.Response, error) { return http.Get(s.URL) }); !strings.Contains(page, "Paste your Hardcover API key") {
+	if page := body(t, func() (*http.Response, error) { return http.Get(s.URL) }); !strings.Contains(page, "Connect Hardcover") || !strings.Contains(page, newKeyURL) {
 		t.Fatalf("page = %s", page)
 	}
 	if page := body(t, func() (*http.Response, error) { return http.PostForm(s.URL, url.Values{"hardcover_key": {"bad"}}) }); !strings.Contains(page, "accept that key") || len(cwa.created) != 0 {
@@ -107,6 +107,9 @@ func TestJoiningMakesOneAccount(t *testing.T) {
 	body(t, func() (*http.Response, error) { return http.PostForm(s.URL, url.Values{"hardcover_key": {"good-key"}}) })
 	if len(cwa.created) != 1 || cwa.created[0] != "kobo-brother/Brother@Example.com" {
 		t.Fatalf("created = %v", cwa.created)
+	}
+	if page := body(t, func() (*http.Response, error) { return http.Get(s.URL) }); !strings.Contains(page, "kobo-brother") {
+		t.Fatalf("CWA login not shown: %s", page)
 	}
 	a, ok := reg.ByEmail("Brother@Example.com")
 	if !ok || a.HardcoverToken != "good-key" || a.CWAPassword == "" {
