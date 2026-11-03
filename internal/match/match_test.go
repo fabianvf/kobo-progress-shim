@@ -110,3 +110,31 @@ func TestISBNFromPath(t *testing.T) {
 		}
 	}
 }
+
+type shelfLookup struct {
+	fakeLookup
+	shelf map[int]bool
+}
+
+func (s shelfLookup) OnShelf(context.Context, []int) (map[int]bool, error) { return s.shelf, nil }
+
+func TestTheShelvedDuplicateDecides(t *testing.T) {
+	a := Book{ID: 338931, Title: "Elantris", Authors: []string{"Brandon Sanderson"}}
+	b := Book{ID: 3075568, Title: "Elantris", Authors: []string{"Brandon Sanderson"}}
+	sig := Signals{Title: "Elantris", Authors: []string{"Brandon Sanderson"}}
+	cases := []struct {
+		shelf   map[int]bool
+		outcome Outcome
+		bookID  int
+	}{
+		{map[int]bool{338931: true}, Automatic, 338931},
+		{map[int]bool{}, Review, 0},
+		{map[int]bool{338931: true, 3075568: true}, Review, 0},
+	}
+	for _, c := range cases {
+		d, err := Decide(context.Background(), shelfLookup{fakeLookup{search: []Book{a, b}}, c.shelf}, sig)
+		if err != nil || d.Outcome != c.outcome || d.BookID != c.bookID {
+			t.Errorf("shelf %v: got %s %d (%s), err %v", c.shelf, d.Outcome, d.BookID, d.Reason, err)
+		}
+	}
+}

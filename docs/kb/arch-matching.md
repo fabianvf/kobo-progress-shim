@@ -30,7 +30,10 @@ person put it there. An ISBN with no title to check goes to review.
 Search order is never trusted. Junk listings can rank above the real book. When
 several books match once subtitles and bracketed notes are dropped, exactly one
 match on the whole title decides, because splits like "(2 of 3)" and siblings
-like "Mistborn: Collected Tales" otherwise look the same as the book.
+like "Mistborn: Collected Tales" otherwise look the same as the book. Among exact
+duplicates, the one the reader has on a Hardcover shelf decides, since a person
+put it there. Anything left goes to review, which the resolve-review skill
+(.claude/skills/resolve-review) works through with the person.
 
 KoboReader.sqlite is never an input to the live path. It's the answer key for
 cmd/match-eval, and a system that read it would need USB access that the live path

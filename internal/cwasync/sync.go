@@ -53,6 +53,7 @@ type Library interface {
 // Shelves makes a shelf that syncs to the Kobo, which only its owner can do.
 type Shelves interface {
 	CreateSyncedShelf(ctx context.Context, user, password, name string) error
+	MarkShelfSynced(ctx context.Context, user, password, name string) error
 }
 
 // Downloader requests what a user wants to read that the library lacks.

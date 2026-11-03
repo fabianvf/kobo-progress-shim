@@ -200,3 +200,17 @@ func (c *Client) Username(ctx context.Context) (string, error) {
 	}
 	return out.Me[0].Username, nil
 }
+
+// OnShelf reports which of these books are on any of the account's shelves,
+// which the matcher uses to choose between Hardcover's duplicates.
+func (c *Client) OnShelf(ctx context.Context, bookIDs []int) (map[int]bool, error) {
+	statuses, err := c.Statuses(ctx, bookIDs)
+	if err != nil {
+		return nil, err
+	}
+	on := map[int]bool{}
+	for id := range statuses {
+		on[id] = true
+	}
+	return on, nil
+}

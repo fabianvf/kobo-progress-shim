@@ -127,6 +127,18 @@ func (s *Syncer) keep(ctx context.Context, a Account, c store.Collection, ok boo
 	if !ok || c.TagID == "" || c.TagID == dryTag {
 		return s.create(ctx, a, want)
 	}
+	// Made before the shim knew this account's CWA password, so not yet marked
+	// to sync. A shelf-only Kobo would otherwise lose every book in it.
+	if !c.Synced && a.CWAUser != "" && s.shelves != nil {
+		if err := s.shelves.MarkShelfSynced(ctx, a.CWAUser, a.CWAPassword, c.Name); err != nil {
+			return err
+		}
+		c.Synced = true
+		s.note(ctx, a, "collection "+c.Name+" marked to sync to the Kobo")
+		if err := s.books.PutCollection(ctx, a.Key, c); err != nil {
+			return err
+		}
+	}
 	if c.Name != want.name {
 		if err := s.cwa.RenameTag(ctx, a.KoboToken, c.TagID, want.name); errors.Is(err, ErrGone) {
 			return s.create(ctx, a, want)

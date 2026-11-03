@@ -43,8 +43,9 @@ func Key(token string) string {
 }
 
 // Load reads ACCOUNTS_FILE, a JSON list of accounts. Without one it falls back to
-// HARDCOVER_API_KEY, with an optional KOBO_SYNC_TOKEN and ACCOUNT_EMAIL, as a
-// single account. An email lets the setup page recognise a configured account
+// HARDCOVER_API_KEY, with an optional KOBO_SYNC_TOKEN, ACCOUNT_EMAIL and the
+// account's CWA login in ACCOUNT_CWA_USER and ACCOUNT_CWA_PASSWORD, as a single
+// account. The CWA login lets the shim mark its collections to sync. An email lets the setup page recognise a configured account
 // instead of offering it a second one.
 func Load() ([]Account, error) {
 	if path := os.Getenv("ACCOUNTS_FILE"); path != "" {
@@ -63,7 +64,8 @@ func Load() ([]Account, error) {
 		return nil, nil
 	}
 	return check([]Account{{Name: "default", KoboToken: os.Getenv("KOBO_SYNC_TOKEN"), HardcoverToken: token,
-		Email: strings.ToLower(strings.TrimSpace(os.Getenv("ACCOUNT_EMAIL")))}})
+		Email:   strings.ToLower(strings.TrimSpace(os.Getenv("ACCOUNT_EMAIL"))),
+		CWAUser: os.Getenv("ACCOUNT_CWA_USER"), CWAPassword: os.Getenv("ACCOUNT_CWA_PASSWORD")}})
 }
 
 // check refuses a list where one device could belong to two accounts, because

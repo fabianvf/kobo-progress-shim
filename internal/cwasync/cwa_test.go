@@ -134,3 +134,33 @@ func TestSessionKeepsSecureCookiesOverHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMarkShelfSyncedFindsTheShelfByName(t *testing.T) {
+	var edited url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/":
+			io.WriteString(w, `<li><a href="/shelf/7" title="Want to Read (12)">Want to Read</a></li><li><a href="/shelf/9" title="Fabian&#39;s List (2)">x</a></li>`)
+		case r.URL.Path == "/shelf/edit/9" && r.Method == http.MethodGet:
+			io.WriteString(w, `<input type="hidden" name="csrf_token" value="tok">`)
+		case r.URL.Path == "/shelf/edit/9":
+			r.ParseForm()
+			edited = r.PostForm
+			http.Redirect(w, r, "/shelf/9", http.StatusFound)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	base, _ := url.Parse(server.URL + "/")
+	s := &Session{base: base, http: &http.Client{Jar: &oneHostJar{cookies: map[string]*http.Cookie{}}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	if err := s.MarkShelfSynced(context.Background(), "Fabian's List"); err != nil {
+		t.Fatal(err)
+	}
+	if edited.Get("kobo_sync") != "on" || edited.Get("title") != "Fabian's List" || edited.Get("csrf_token") != "tok" {
+		t.Fatalf("edited = %v", edited)
+	}
+	if err := s.MarkShelfSynced(context.Background(), "Missing"); err == nil {
+		t.Error("a missing shelf wasn't an error")
+	}
+}

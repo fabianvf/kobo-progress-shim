@@ -113,7 +113,34 @@ func Decide(ctx context.Context, l Lookup, s Signals) (Decision, error) {
 	case 1:
 		return Decision{Outcome: Automatic, BookID: exact[0].ID, Reason: "one exact search match"}, nil
 	}
+	// Hardcover's duplicates usually share a title and author exactly. The one
+	// the reader shelved is the one they mean, since a person put it there.
+	if shelf, ok := l.(Shelf); ok {
+		ids := make([]int, len(exact))
+		for i, b := range exact {
+			ids[i] = b.ID
+		}
+		on, err := shelf.OnShelf(ctx, ids)
+		if err != nil {
+			return Decision{}, err
+		}
+		var shelved []Book
+		for _, b := range exact {
+			if on[b.ID] {
+				shelved = append(shelved, b)
+			}
+		}
+		if len(shelved) == 1 {
+			return Decision{Outcome: Automatic, BookID: shelved[0].ID, Reason: "the exact match on the reader's shelf"}, nil
+		}
+	}
 	return Decision{Outcome: Review, Reason: "several exact search matches", Candidates: exact}, nil
+}
+
+// Shelf is an optional part of a Lookup: which of these books the reader has on
+// a Hardcover shelf.
+type Shelf interface {
+	OnShelf(ctx context.Context, bookIDs []int) (map[int]bool, error)
 }
 
 // wholeTitle keeps the subtitle and bracketed notes that NormalizeTitle drops.

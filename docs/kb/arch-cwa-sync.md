@@ -105,8 +105,11 @@ Only a shelf's owner can mark it to sync to the Kobo, and the Kobo API creates
 shelves unmarked, so a shelf-only account's collections would never reach its
 device. For accounts setup made, the shim knows the CWA password and creates the
 shelf through the web form first; the Kobo API's create then returns it by name.
-Configured accounts like Fabian's sync the whole library, where unmarked shelves
-still arrive as collections.
+A configured account syncs the whole library, where unmarked shelves still arrive
+as collections, unless it's given its CWA login (ACCOUNT_CWA_USER and
+ACCOUNT_CWA_PASSWORD). Then the shim marks its existing collections to sync too,
+finding each shelf's id by name in the page's sidebar, which must happen before
+that account is switched to shelf-only sync or its Kobo empties.
 
 CWA marks its session cookie Secure when it enforces HTTPS or OAuth is on, and the
 shim reaches it over plain HTTP in the pod, so sessions use a jar that sends the

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
@@ -54,6 +55,35 @@ func (s *Session) CreateSyncedShelf(ctx context.Context, name string) error {
 		return fmt.Errorf("cwa: creating shelf: status %d", status)
 	}
 	return nil
+}
+
+var shelfLink = regexp.MustCompile(`href="[^"]*/shelf/(\d+)" title="([^"]*) \(\d+\)"`)
+
+// MarkShelfSynced turns on "sync to Kobo" for the session user's shelf of this
+// name, for a shelf the Kobo API made, which starts without it.
+func (s *Session) MarkShelfSynced(ctx context.Context, name string) error {
+	data, status, err := s.get(ctx, "")
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("cwa: reading shelves: status %d", status)
+	}
+	for _, m := range shelfLink.FindAllSubmatch(data, -1) {
+		if html.UnescapeString(string(m[2])) != name {
+			continue
+		}
+		edit := "shelf/edit/" + string(m[1])
+		code, err := s.post(ctx, edit, edit, url.Values{"title": {name}, "kobo_sync": {"on"}})
+		if err != nil {
+			return err
+		}
+		if code != http.StatusFound {
+			return fmt.Errorf("cwa: marking shelf to sync: status %d", code)
+		}
+		return nil
+	}
+	return fmt.Errorf("cwa: no shelf named %q", name)
 }
 
 // NewUser is what the robot needs to set up someone's CWA account.
@@ -243,4 +273,25 @@ func (j *oneHostJar) Cookies(*url.URL) []*http.Cookie {
 		out = append(out, c)
 	}
 	return out
+}
+
+// DeleteShelf removes the session user's shelf of this name.
+func (s *Session) DeleteShelf(ctx context.Context, name string) error {
+	data, _, err := s.get(ctx, "")
+	if err != nil {
+		return err
+	}
+	for _, m := range shelfLink.FindAllSubmatch(data, -1) {
+		if html.UnescapeString(string(m[2])) == name {
+			code, err := s.post(ctx, "shelf/edit/"+string(m[1]), "shelf/delete/"+string(m[1]), url.Values{})
+			if err != nil {
+				return err
+			}
+			if code != http.StatusFound && code != http.StatusOK {
+				return fmt.Errorf("cwa: deleting shelf: status %d", code)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("cwa: no shelf named %q", name)
 }

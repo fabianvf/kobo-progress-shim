@@ -362,3 +362,30 @@ func TestRequestedImportIsSyncedWithoutReview(t *testing.T) {
 		t.Errorf("sets = %v", lib.sets)
 	}
 }
+
+type fakeShelves struct{ created, marked []string }
+
+func (f *fakeShelves) CreateSyncedShelf(_ context.Context, _, _, name string) error {
+	f.created = append(f.created, name)
+	return nil
+}
+func (f *fakeShelves) MarkShelfSynced(_ context.Context, _, _, name string) error {
+	f.marked = append(f.marked, name)
+	return nil
+}
+
+func TestCollectionsMadeBeforeTheLoginGetMarked(t *testing.T) {
+	s, lib, hc, _ := setup(t)
+	ctx := context.Background()
+	syncer(lib, s, hc, false).Once(ctx) // no CWA login yet, so unmarked
+	shelves := &fakeShelves{}
+	accounts := []Account{{Key: me, KoboToken: "t", Hardcover: hc, CWAUser: "fabian", CWAPassword: "pw"}}
+	sync := New(lib, shelves, nil, s, func() []Account { return accounts }, false)
+	sync.pause = 0
+	sync.Once(ctx)
+	sync.Once(ctx)
+	slices.Sort(shelves.marked)
+	if strings.Join(shelves.marked, ",") != "Hardcover,Read,Want to Read" || len(shelves.created) != 0 {
+		t.Fatalf("marked %v, created %v", shelves.marked, shelves.created)
+	}
+}

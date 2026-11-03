@@ -122,6 +122,14 @@ func (s shelves) CreateSyncedShelf(ctx context.Context, user, password, name str
 	return session.CreateSyncedShelf(ctx, name)
 }
 
+func (s shelves) MarkShelfSynced(ctx context.Context, user, password, name string) error {
+	session, err := cwasync.Login(ctx, s.base, user, password)
+	if err != nil {
+		return err
+	}
+	return session.MarkShelfSynced(ctx, name)
+}
+
 // robotAdmin makes CWA users as the robot account.
 type robotAdmin struct {
 	base           *url.URL
