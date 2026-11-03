@@ -45,6 +45,19 @@ func TestDecide(t *testing.T) {
 		{"bundle by kobo title", fakeLookup{byISBN: []Book{light}}, Signals{ISBN: isbn, Title: "Discworld eBook Bundle", Authors: sig.Authors}, Review, 0},
 		{"bundle by hardcover title", fakeLookup{byISBN: []Book{{ID: 7, Title: "Discworld: Books 1-5", Authors: sig.Authors}}}, sig, Review, 0},
 		{"no signals", fakeLookup{}, Signals{}, Review, 0},
+		{"whole title beats a split", fakeLookup{search: []Book{
+			{ID: 8, Title: "Words of Radiance", Authors: []string{"Brandon Sanderson"}},
+			{ID: 9, Title: "Words of Radiance (5 of 5) [Dramatized Adaptation]", Authors: []string{"Brandon Sanderson"}},
+		}}, Signals{Title: "Words of Radiance", Authors: []string{"Brandon Sanderson"}}, Automatic, 8},
+		{"whole title beats a sibling subtitle", fakeLookup{search: []Book{
+			{ID: 10, Title: "Mistborn: Secret History", Authors: []string{"Brandon Sanderson"}},
+			{ID: 11, Title: "Mistborn: Collected Tales", Authors: []string{"Brandon Sanderson"}},
+		}}, Signals{Title: "Mistborn: Secret History", Authors: []string{"Brandon Sanderson"}}, Automatic, 10},
+		{"only splits stays review", fakeLookup{search: []Book{
+			{ID: 12, Title: "The Final Empire (1 of 3)", Authors: []string{"Brandon Sanderson"}},
+			{ID: 13, Title: "The Final Empire (2 of 3)", Authors: []string{"Brandon Sanderson"}},
+		}}, Signals{Title: "The Final Empire", Authors: []string{"Brandon Sanderson"}}, Review, 0},
+		{"true duplicates stay review", fakeLookup{search: []Book{light, other}}, noISBN, Review, 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

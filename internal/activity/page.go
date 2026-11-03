@@ -29,7 +29,7 @@ input[type=text]{width:10rem}.muted{color:#666}
 <h2>Needs a match ({{len .Review}})</h2>
 {{if .Review}}<table><tr><th>Book</th><th>Why</th><th>Suggested</th><th>Hardcover book id</th></tr>
 {{range .Review}}<tr><td>{{.Title}}{{if .ISBN}}<br><span class="muted">{{.ISBN}}</span>{{end}}</td><td>{{.Reason}}</td><td>{{.Suggestion}}</td>
-<td><form method="post" action="confirm"><input type="hidden" name="id" value="{{.EntitlementID}}"><input type="text" name="hardcover_id" inputmode="numeric" required aria-label="Hardcover book id"> <button>Save</button></form></td></tr>
+<td><form method="post" action="confirm"><input type="hidden" name="user" value="{{.User}}"><input type="hidden" name="id" value="{{.EntitlementID}}"><input type="text" name="hardcover_id" inputmode="numeric" required aria-label="Hardcover book id"> <button>Save</button></form></td></tr>
 {{end}}</table>{{else}}<p>Nothing waiting.</p>{{end}}
 <h2>Recent activity</h2>
 {{if .Events}}<table><tr><th>When (UTC)</th><th>Book</th><th>What</th></tr>
@@ -61,7 +61,7 @@ func Register(mux *http.ServeMux, books *store.Store, dryRun bool) {
 			http.Error(w, "the Hardcover book id must be a number", http.StatusBadRequest)
 			return
 		}
-		if _, err := books.Confirm(r.Context(), r.FormValue("id"), id); err != nil {
+		if _, err := books.Confirm(r.Context(), r.FormValue("user"), r.FormValue("id"), id); err != nil {
 			log.Printf("activity: %v", err)
 			http.Error(w, "couldn't save that match", http.StatusBadRequest)
 			return

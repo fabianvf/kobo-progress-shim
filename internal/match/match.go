@@ -93,11 +93,19 @@ func Decide(ctx context.Context, l Lookup, s Signals) (Decision, error) {
 	if err != nil {
 		return Decision{}, err
 	}
-	var exact []Book
+	var exact, whole []Book
 	for _, b := range found {
 		if Same(s.Title, s.Authors, b) {
 			exact = append(exact, b)
+			if wholeTitle(s.Title) == wholeTitle(b.Title) {
+				whole = append(whole, b)
+			}
 		}
+	}
+	// Splits like "(2 of 3)" and books sharing a series name before a colon all
+	// look the same once subtitles go, so one match on the whole title decides.
+	if len(exact) > 1 && len(whole) == 1 {
+		return Decision{Outcome: Automatic, BookID: whole[0].ID, Reason: "one exact search match on the whole title"}, nil
 	}
 	switch len(exact) {
 	case 0:
@@ -106,6 +114,11 @@ func Decide(ctx context.Context, l Lookup, s Signals) (Decision, error) {
 		return Decision{Outcome: Automatic, BookID: exact[0].ID, Reason: "one exact search match"}, nil
 	}
 	return Decision{Outcome: Review, Reason: "several exact search matches", Candidates: exact}, nil
+}
+
+// wholeTitle keeps the subtitle and bracketed notes that NormalizeTitle drops.
+func wholeTitle(s string) string {
+	return strings.TrimPrefix(folded(s), "the ")
 }
 
 // Same reports whether the normalized titles are equal and an author surname is

@@ -199,6 +199,29 @@ func TestFinishedOnBothAddsNothing(t *testing.T) {
 	}
 }
 
+// A book marked read with its dates cleared, as the Dresden books are, has no
+// read at all. The Kobo saying Finished, often an echo of the CWA sync, mustn't
+// give it one dated today.
+func TestReadWithNoReadsGetsNone(t *testing.T) {
+	f := &fakeHardcover{pages: 200, statusAdds: true, book: &fakeBook{Status: statusRead}}
+	c := client(t, f)
+	finished := reading
+	finished.Read, finished.Percent, finished.Date = true, 100, "2026-11-09"
+	if _, err := c.Reconcile(context.Background(), finished, false); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.mutations) != 0 || len(f.book.Reads) != 0 {
+		t.Fatalf("mutations %v, reads %+v", f.mutations, f.book.Reads)
+	}
+	finished.Rating = 4
+	if _, err := c.Reconcile(context.Background(), finished, false); err != nil {
+		t.Fatal(err)
+	}
+	if f.book.Rating != float64(4) || len(f.book.Reads) != 0 {
+		t.Fatalf("book = %+v", f.book)
+	}
+}
+
 func TestMarkingReadKeepsAnEarlierRead(t *testing.T) {
 	f := &fakeHardcover{pages: 200, statusAdds: true, book: &fakeBook{Status: 1, Reads: []map[string]any{{"id": 1, "started_at": "2026-09-04", "finished_at": "2026-09-21"}}}}
 	c := client(t, f)
@@ -229,6 +252,44 @@ func TestMarkingReadWithNoReadsUsesTheKoboDate(t *testing.T) {
 	}
 	if got := toFloat(f.book.Reads[0]["progress_pages"]); got != 200 {
 		t.Errorf("progress_pages = %v", got)
+	}
+}
+
+func TestBackfillDatesANewRead(t *testing.T) {
+	for _, status := range []int{0, 1} { // not on a shelf, and want to read
+		f := &fakeHardcover{pages: 200, insertAdds: true, statusAdds: true}
+		if status != 0 {
+			f.book = &fakeBook{Status: status}
+		}
+		c := client(t, f)
+		want := Want{BookID: 1, Read: true, Percent: 100, Date: "2026-08-19", Started: "2026-08-17"}
+		for range 2 {
+			if _, err := c.Reconcile(context.Background(), want, false); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if len(f.book.Reads) != 1 || f.book.Reads[0]["started_at"] != "2026-08-17" || f.book.Reads[0]["finished_at"] != "2026-08-19" {
+			t.Fatalf("status %d: reads = %+v", status, f.book.Reads)
+		}
+	}
+}
+
+func TestMarkReadUndated(t *testing.T) {
+	for _, book := range []*fakeBook{nil, {Status: 1}, {Status: 1, Reads: []map[string]any{{"id": 1, "started_at": "2025-01-01"}}}} {
+		f := &fakeHardcover{pages: 200, insertAdds: true, statusAdds: true, book: book}
+		kept := 0
+		if book != nil {
+			kept = len(book.Reads)
+		}
+		c := client(t, f)
+		for range 2 {
+			if _, err := c.MarkReadUndated(context.Background(), 1); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if f.book.Status != statusRead || len(f.book.Reads) != kept {
+			t.Fatalf("book = %+v", f.book)
+		}
 	}
 }
 

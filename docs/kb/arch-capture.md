@@ -5,6 +5,7 @@ covers:
   - internal/capture/**
 see_also:
   - arch-kobo-traffic
+  - arch-cwa-sync
 ---
 # Capture proxy
 
@@ -29,6 +30,13 @@ nobody has seen yet is redacted by default. A JSON body that fails to parse is
 dropped, because it can't be redacted. CWA's token is a path segment that also
 appears inside returned download URLs, so it is scrubbed from every string, not
 only the request line.
+
+The CWA token in the path is turned into accounts.Key before anything leaves
+capture, and only the key travels with Progress, Rating and SyncedBook.
+
+The CWA sync main starts changes what the Kobo receives on its next sync, by
+design, through CWA's own state API. It never touches a request in flight, and it
+runs on its own goroutine, so it can't delay one. See arch-cwa-sync.
 
 The Observer runs on the recorder's goroutine, after the Kobo already has its
 response, so its methods must not block. It reads the unredacted exchange, because

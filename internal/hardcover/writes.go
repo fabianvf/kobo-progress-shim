@@ -21,6 +21,7 @@ type Want struct {
 	Read    bool // otherwise currently reading
 	Percent int
 	Date    string // YYYY-MM-DD
+	Started string // YYYY-MM-DD, for a new read; Date when empty
 	Rating  int    // 0 means no new rating to send
 }
 
@@ -58,6 +59,7 @@ func (c *Client) Reconcile(ctx context.Context, want Want, dryRun bool) ([]strin
 
 	var done []string
 	var prior map[int]bool // reads from before this call changed the status, nil if it didn't
+	wasRead := current != nil && current.StatusID == statusRead
 	if current == nil {
 		status := statusReading
 		if want.Read {
@@ -84,6 +86,12 @@ func (c *Client) Reconcile(ctx context.Context, want Want, dryRun bool) ([]strin
 
 	if current.StatusID == statusRead && !want.Read {
 		done = append(done, "already read, keeping it read")
+		return c.applyRating(ctx, current, want, dryRun, done)
+	}
+	// Re-reads aren't tracked, so a book Hardcover already has as read gets no new
+	// read, even with no dated read at all. The Kobo reports Finished again when the
+	// CWA sync marks a book finished, and this is what stops that adding one.
+	if wasRead && want.Read {
 		return c.applyRating(ctx, current, want, dryRun, done)
 	}
 
@@ -123,6 +131,39 @@ func (c *Client) Reconcile(ctx context.Context, want Want, dryRun bool) ([]strin
 		return done, err
 	}
 	return c.applyRating(ctx, current, want, dryRun, done)
+}
+
+// MarkReadUndated shelves a book as read with no dates, for a book known to be
+// finished but not when. Hardcover adds a read dated today on marking a book read,
+// and deleting it leaves the status read with no dates. A book already read is
+// left alone.
+func (c *Client) MarkReadUndated(ctx context.Context, bookID int) ([]string, error) {
+	current, err := c.userBook(ctx, bookID)
+	if err != nil {
+		return nil, err
+	}
+	var prior map[int]bool
+	switch {
+	case current != nil && current.StatusID == statusRead:
+		return nil, nil
+	case current == nil:
+		prior = map[int]bool{}
+		err = c.insertUserBook(ctx, bookID, statusRead, nil)
+	default:
+		prior = readIDs(current.Reads)
+		err = c.updateUserBook(ctx, current.ID, map[string]any{"status_id": statusRead})
+	}
+	done := []string{"set status to read, no date"}
+	if err != nil {
+		return done, err
+	}
+	if current, err = c.userBook(ctx, bookID); err != nil {
+		return done, err
+	}
+	if current == nil {
+		return done, fmt.Errorf("hardcover: book %d missing after marking it read", bookID)
+	}
+	return done, c.removeNewReads(ctx, current, prior)
 }
 
 func (c *Client) applyRating(ctx context.Context, current *userBook, want Want, dryRun bool, done []string) ([]string, error) {
@@ -170,8 +211,12 @@ func (c *Client) reconcileRead(ctx context.Context, current *userBook, ed *editi
 		object["finished_at"] = want.Date
 	}
 
+	started := want.Date
+	if want.Started != "" {
+		started = want.Started
+	}
 	if open == nil {
-		object["started_at"] = want.Date
+		object["started_at"] = started
 		description := describeRead("add a read", pages, ed, want)
 		if dryRun {
 			return []string{description}, nil
@@ -186,6 +231,9 @@ func (c *Client) reconcileRead(ctx context.Context, current *userBook, ed *editi
 		return nil, nil
 	}
 	object["started_at"] = open.StartedAt
+	if open.StartedAt == nil && want.Started != "" {
+		object["started_at"] = want.Started
+	}
 	if _, ok := object["edition_id"]; !ok && open.EditionID != nil {
 		object["edition_id"] = *open.EditionID
 	}

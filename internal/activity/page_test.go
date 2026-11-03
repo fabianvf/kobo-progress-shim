@@ -21,7 +21,7 @@ func TestPageAndConfirm(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer books.Close()
-	books.Put(ctx, store.Book{EntitlementID: "e", Title: "<Whispers>", Outcome: "review", Reason: "no exact search match", Suggestion: "432534: Whispers Under Ground"})
+	books.Put(ctx, store.Book{User: "u", EntitlementID: "e", Title: "<Whispers>", Outcome: "review", Reason: "no exact search match", Suggestion: "432534: Whispers Under Ground"})
 	books.AddEvent(ctx, store.Event{Time: time.Now(), EntitlementID: "e", Title: "<Whispers>", Detail: "reading at 6%"})
 
 	mux := http.NewServeMux()
@@ -45,7 +45,7 @@ func TestPageAndConfirm(t *testing.T) {
 		t.Errorf("bad id: status %d", resp.StatusCode)
 	}
 
-	resp, err = http.PostForm(server.URL+"/confirm", url.Values{"id": {"e"}, "hardcover_id": {"432534"}})
+	resp, err = http.PostForm(server.URL+"/confirm", url.Values{"user": {"u"}, "id": {"e"}, "hardcover_id": {"432534"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestPageAndConfirm(t *testing.T) {
 	if body := get(t, server.URL); !strings.Contains(body, "Needs a match (0)") {
 		t.Error("book still waiting after confirm")
 	}
-	if b, _, _ := books.Get(ctx, "e"); !b.Resolved() || b.HardcoverID != 432534 {
+	if b, _, _ := books.Get(ctx, "u", "e"); !b.Resolved() || b.HardcoverID != 432534 {
 		t.Errorf("book = %+v", b)
 	}
 }
@@ -85,7 +85,7 @@ func TestConfirmRefusesCrossSitePost(t *testing.T) {
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("status %d", resp.StatusCode)
 	}
-	if b, _, _ := books.Get(ctx, "e"); b.Resolved() {
+	if b, _, _ := books.Get(ctx, "", "e"); b.Resolved() {
 		t.Error("cross-site post saved a match")
 	}
 }

@@ -1,6 +1,7 @@
 ---
 id: arch-matching
 covers:
+  - cmd/backfill/**
   - cmd/match-eval/**
   - internal/activity/**
   - internal/dryrun/**
@@ -11,6 +12,7 @@ covers:
 see_also:
   - arch-capture
   - arch-kobo-traffic
+  - arch-cwa-sync
 ---
 # Matching Kobo books to Hardcover
 
@@ -25,13 +27,21 @@ title and author also match, or exactly one exact title and author match from
 search. A stored hardcover-id is the only single signal that counts, because a
 person put it there. An ISBN with no title to check goes to review.
 
-Search order is never trusted. Junk listings can rank above the real book.
+Search order is never trusted. Junk listings can rank above the real book. When
+several books match once subtitles and bracketed notes are dropped, exactly one
+match on the whole title decides, because splits like "(2 of 3)" and siblings
+like "Mistborn: Collected Tales" otherwise look the same as the book.
 
-KoboReader.sqlite is never an input. It's the answer key for cmd/match-eval, and
-a system that read it would need USB access that the live path doesn't have.
+KoboReader.sqlite is never an input to the live path. It's the answer key for
+cmd/match-eval, and a system that read it would need USB access that the live path
+doesn't have. cmd/backfill reads a copy once, by hand, and writes only the rows a
+person left marked yes in its plan.
 
 Kobo auth stays in memory for one store call. capture.Progress holds it, so never
 print that struct whole or save it. store.Book has no auth field.
+
+Books are saved per user, keyed by accounts.Key and entitlement id. A book whose
+Kobo no account claims is saved but gets no Hardcover client. See arch-cwa-sync.
 
 A match chosen by hand outlives later syncs. Only an unresolved book takes new
 metadata from sync, otherwise a sync would undo a correction.
@@ -42,7 +52,9 @@ the Kobo's path must not depend on it.
 Hardcover writes reconcile against its current state rather than replaying events,
 which is what stops repeated syncs creating duplicate reads. Read the book back after
 inserting it, because adding a book creates a read row, and adding another would
-duplicate the read.
+duplicate the read. A book Hardcover already has as read gets no new read, even
+with no dated read at all, because re-reads aren't tracked and the Kobo reports
+Finished again when the CWA sync marks a book finished.
 
 Only DRY_RUN=false writes. Anything else stays dry, because a live write publishes
 to a public profile. Switching to live doesn't replay earlier dry-run progress: only
@@ -69,7 +81,11 @@ today plus an activity entry, even if the book already has a read. Reconcile del
 that read when the book had earlier reads, and otherwise redates it to the Kobo's
 date. If it dies between the status change and the delete, a retry sees status read
 and leaves the extra read. Deleting a read leaves the status alone and clears the
-dates, which is the way to mark a book read with no date.
+dates, which is the way to mark a book read with no date. MarkReadUndated does
+that, for backfill rows the Kobo has no date for.
+
+A backfill posts one activity entry per book it marks read, on a public feed. The
+first one, 2026-11-03, posted 14.
 
 Hardcover posts the activity entry a few seconds after the write.
 
@@ -114,14 +130,25 @@ device, and it hides whether the live path works.
 Store lookup at /v1/library/<id>/metadata, 2026-11-02. It returned ISBN, title and
 author for three Libby loans, using the device's AuthToken from a one-off script.
 
+Backfill from a copy of the Kobo's database, reviewed as a plan, 2026-11-03. The
+history of books read before the shim isn't on the network: the Kobo only sends a
+reading state when it changes, CWA's books were added after they were read, and
+Hardcover never got them. A full resync might carry the store's and Libby's states,
+but nothing safe triggers one.
+
 ## VERIFY
 
     go test -race ./...
     HARDCOVER_API_KEY=... go run ./cmd/match-eval -key <answer key csv>
 
-The last run on 77 books: 72 automatic and 5 review with ISBN, title and author; 64
-automatic and 13 review with title and author, with no conflicts between them. Those
-answers aren't checked by hand and the first row has no independent check.
+The last run on 77 books, 2026-11-03 with the whole-title rule: 72 automatic and 5
+review with ISBN, title and author; 69 automatic and 8 review with title and author
+(64 and 13 before the rule), with no conflicts between them. Those answers aren't
+checked by hand and the first row has no independent check.
+
+On CWA's 54 books, title and author only as sync gives them, before the whole-title
+rule: 43 automatic, 11 review. Elantris, A Court of Wings and Ruin and Stone and Sky
+are true duplicates on Hardcover and need a hand-chosen match.
 
 Live on v0.2.1: a Libby and a store book each returned ISBN, title and author, and
 both matched automatically when run through the matcher separately. Not yet seen:
@@ -137,3 +164,5 @@ what stops that, and that part has only run against a fake.
 - [arch-kobo-traffic.md](arch-kobo-traffic.md) - which requests carry progress and
   what each one exposes.
 - [arch-capture.md](arch-capture.md) - the proxy invariants this must not break.
+- [arch-cwa-sync.md](arch-cwa-sync.md) - accounts, and the sync that makes CWA's
+  read status follow Hardcover.

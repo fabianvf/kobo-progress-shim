@@ -41,20 +41,29 @@ type Writer interface {
 	Reconcile(ctx context.Context, want hardcover.Want, dryRun bool) ([]string, error)
 }
 
+// Account is the Hardcover side of one user. Both are nil for a Kobo no account
+// claims, so its books are saved but never matched or written.
+type Account struct {
+	Lookup match.Lookup
+	Writer Writer
+}
+
+// Accounts finds the account for an accounts.Key.
+type Accounts func(user string) Account
+
 type Worker struct {
-	kobo   Store
-	lookup match.Lookup // nil when there's no Hardcover token
-	writer Writer       // nil when there's no Hardcover token
-	dryRun bool
-	books  *store.Store
+	kobo     Store
+	accounts Accounts
+	dryRun   bool
+	books    *store.Store
 	// Separate so a library resync can't crowd out what the Kobo reports.
 	reports chan any
 	synced  chan any
 	done    sync.WaitGroup
 }
 
-func New(kobo Store, lookup match.Lookup, writer Writer, books *store.Store, dryRun bool) *Worker {
-	w := &Worker{kobo: kobo, lookup: lookup, writer: writer, dryRun: dryRun, books: books, reports: make(chan any, queueSize), synced: make(chan any, queueSize)}
+func New(kobo Store, accounts Accounts, books *store.Store, dryRun bool) *Worker {
+	w := &Worker{kobo: kobo, accounts: accounts, dryRun: dryRun, books: books, reports: make(chan any, queueSize), synced: make(chan any, queueSize)}
 	w.done.Add(1)
 	go w.run()
 	return w
@@ -124,14 +133,15 @@ func (w *Worker) handleRetry(ctx context.Context) error {
 // write sends a book's latest state and clears Pending only when that worked, so
 // a failure is retried and a restart loses nothing.
 func (w *Worker) write(ctx context.Context, b *store.Book) error {
-	if w.writer == nil || !b.Resolved() || b.Shelf == "" {
+	writer := w.accounts(b.User).Writer
+	if writer == nil || !b.Resolved() || b.Shelf == "" {
 		return nil
 	}
 	want := hardcover.Want{BookID: b.HardcoverID, ISBN: b.ISBN, Read: b.Shelf == shelfRead, Percent: b.Percent, Date: b.Date}
 	if b.Rating != b.RatingWritten {
 		want.Rating = b.Rating
 	}
-	steps, err := w.writer.Reconcile(ctx, want, w.dryRun)
+	steps, err := writer.Reconcile(ctx, want, w.dryRun)
 	detail := strings.Join(steps, "; ")
 	if detail == "" {
 		detail = "Hardcover already up to date"
@@ -181,11 +191,11 @@ func (w *Worker) handle(item any) {
 }
 
 func (w *Worker) handleSynced(ctx context.Context, s capture.SyncedBook) error {
-	b, _, err := w.books.Get(ctx, s.EntitlementID)
+	b, _, err := w.books.Get(ctx, s.User, s.EntitlementID)
 	if err != nil {
 		return err
 	}
-	b.EntitlementID, b.RevisionID = s.EntitlementID, s.RevisionID
+	b.User, b.EntitlementID, b.RevisionID = s.User, s.EntitlementID, s.RevisionID
 	if !b.Resolved() {
 		b.Title, b.Authors = s.Title, s.Authors
 		if s.ISBN != "" {
@@ -197,11 +207,11 @@ func (w *Worker) handleSynced(ctx context.Context, s capture.SyncedBook) error {
 }
 
 func (w *Worker) handleProgress(ctx context.Context, p capture.Progress) error {
-	b, _, err := w.books.Get(ctx, p.EntitlementID)
+	b, _, err := w.books.Get(ctx, p.User, p.EntitlementID)
 	if err != nil {
 		return err
 	}
-	b.EntitlementID = p.EntitlementID
+	b.User, b.EntitlementID = p.User, p.EntitlementID
 	w.identify(ctx, &b, p)
 	b.Percent, b.Status = p.Percent, p.Status
 	b.Date = reportDate(p.LastModified)
@@ -210,7 +220,7 @@ func (w *Worker) handleProgress(ctx context.Context, p capture.Progress) error {
 	if err := w.books.Put(ctx, b); err != nil {
 		return err
 	}
-	if w.writer != nil && b.Resolved() && b.Shelf != "" {
+	if w.accounts(b.User).Writer != nil && b.Resolved() && b.Shelf != "" {
 		return w.write(ctx, &b)
 	}
 	return w.record(ctx, b, detail)
@@ -251,10 +261,19 @@ func (w *Worker) identify(ctx context.Context, b *store.Book, p capture.Progress
 		}
 	}
 	lookupFailed := b.Lookup != "found" && b.Lookup != "not_found"
-	if b.Outcome != "" || w.lookup == nil || lookupFailed {
+	if b.Outcome != "" || lookupFailed {
 		return
 	}
-	decision, err := match.Decide(ctx, w.lookup, match.Signals{ISBN: b.ISBN, Title: b.Title, Authors: b.Authors})
+	Decide(ctx, w.accounts(b.User).Lookup, b)
+}
+
+// Decide matches a book from what's saved about it. A Hardcover error leaves it
+// undecided so the next attempt asks again.
+func Decide(ctx context.Context, lookup match.Lookup, b *store.Book) {
+	if lookup == nil {
+		return
+	}
+	decision, err := match.Decide(ctx, lookup, match.Signals{ISBN: b.ISBN, Title: b.Title, Authors: b.Authors})
 	if err != nil {
 		b.Reason = "hardcover error: " + err.Error()
 		return
@@ -304,19 +323,19 @@ func unresolvedReason(b store.Book) string {
 }
 
 func (w *Worker) handleRating(ctx context.Context, r capture.Rating) error {
-	b, ok, err := w.books.ByRevision(ctx, r.ProductID)
+	b, ok, err := w.books.ByRevision(ctx, r.User, r.ProductID)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return w.books.AddEvent(ctx, store.Event{Time: time.Now(), EntitlementID: r.ProductID, Detail: fmt.Sprintf("%d stars for an unknown product, not written", r.Stars)})
+		return w.books.AddEvent(ctx, store.Event{Time: time.Now(), User: r.User, EntitlementID: r.ProductID, Detail: fmt.Sprintf("%d stars for an unknown product, not written", r.Stars)})
 	}
 	b.Rating = r.Stars
 	b.Pending = b.Resolved() && b.Shelf != ""
 	if err := w.books.Put(ctx, b); err != nil {
 		return err
 	}
-	if w.writer != nil && b.Resolved() && b.Shelf != "" {
+	if w.accounts(b.User).Writer != nil && b.Resolved() && b.Shelf != "" {
 		return w.write(ctx, &b)
 	}
 	detail := fmt.Sprintf("%d stars, not written: %s", r.Stars, unresolvedReason(b))
@@ -328,5 +347,5 @@ func (w *Worker) handleRating(ctx context.Context, r capture.Rating) error {
 
 func (w *Worker) record(ctx context.Context, b store.Book, detail string) error {
 	log.Printf("dryrun %s %q: %s", b.EntitlementID, b.Title, detail)
-	return w.books.AddEvent(ctx, store.Event{Time: time.Now(), EntitlementID: b.EntitlementID, Title: b.Title, Detail: detail})
+	return w.books.AddEvent(ctx, store.Event{Time: time.Now(), User: b.User, EntitlementID: b.EntitlementID, Title: b.Title, Detail: detail})
 }

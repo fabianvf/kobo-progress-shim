@@ -2,6 +2,12 @@
  "_generated_by": "kb graph --write",
  "_what": "source path -> {articles that document it, tests that exercise it}. Answers \"I touched this file: what do I read, and where do the test updates go?\" `tests` is derived from real imports and exact stem reconstruction, never filename similarity. `articleTests` lists the subsystem-level guards each article names, which no single file imports. Generated: do not hand-edit.",
  "owners": {
+  "cmd/backfill/main.go": {
+   "articles": [
+    "arch-matching"
+   ],
+   "tests": []
+  },
   "cmd/kobo-capture/main.go": {
    "articles": [
     "arch-capture"
@@ -13,6 +19,16 @@
     "arch-matching"
    ],
    "tests": []
+  },
+  "internal/accounts/accounts.go": {
+   "articles": [
+    "arch-cwa-sync"
+   ],
+   "tests": [
+    "internal/accounts/accounts_test.go",
+    "internal/capture/progress_test.go",
+    "internal/capture/proxy_test.go"
+   ]
   },
   "internal/activity/page.go": {
    "articles": [
@@ -62,11 +78,31 @@
     "internal/dryrun/worker_test.go"
    ]
   },
+  "internal/cwasync/cwa.go": {
+   "articles": [
+    "arch-cwa-sync"
+   ],
+   "tests": [
+    "internal/cwasync/cwa_test.go",
+    "internal/cwasync/sync_test.go"
+   ]
+  },
+  "internal/cwasync/sync.go": {
+   "articles": [
+    "arch-cwa-sync"
+   ],
+   "tests": [
+    "internal/cwasync/cwa_test.go",
+    "internal/cwasync/sync_test.go"
+   ]
+  },
   "internal/dryrun/worker.go": {
    "articles": [
     "arch-matching"
    ],
    "tests": [
+    "internal/cwasync/cwa_test.go",
+    "internal/cwasync/sync_test.go",
     "internal/dryrun/worker_test.go"
    ]
   },
@@ -75,6 +111,8 @@
     "arch-matching"
    ],
    "tests": [
+    "internal/cwasync/cwa_test.go",
+    "internal/cwasync/sync_test.go",
     "internal/dryrun/worker_test.go",
     "internal/hardcover/writes_test.go"
    ]
@@ -84,6 +122,8 @@
     "arch-matching"
    ],
    "tests": [
+    "internal/cwasync/cwa_test.go",
+    "internal/cwasync/sync_test.go",
     "internal/dryrun/worker_test.go",
     "internal/hardcover/writes_test.go"
    ]
@@ -102,6 +142,8 @@
     "arch-matching"
    ],
    "tests": [
+    "internal/cwasync/cwa_test.go",
+    "internal/cwasync/sync_test.go",
     "internal/dryrun/worker_test.go",
     "internal/hardcover/writes_test.go",
     "internal/match/match_test.go"
@@ -113,6 +155,8 @@
    ],
    "tests": [
     "internal/activity/page_test.go",
+    "internal/cwasync/cwa_test.go",
+    "internal/cwasync/sync_test.go",
     "internal/dryrun/worker_test.go",
     "internal/store/store_test.go"
    ]

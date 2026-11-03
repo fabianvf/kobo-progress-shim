@@ -155,3 +155,32 @@ func (c *Client) Search(ctx context.Context, title, author string) ([]match.Book
 	}
 	return books, nil
 }
+
+// Statuses returns the shelf status of each of these books that's on the
+// account, keyed by book id. A book missing from the map isn't on any shelf.
+func (c *Client) Statuses(ctx context.Context, bookIDs []int) (map[int]int, error) {
+	const q = `query($ids: [Int!]) {
+		me { user_books(where: {book_id: {_in: $ids}}) { book_id status_id } }
+	}`
+	var out struct {
+		Me []struct {
+			UserBooks []struct {
+				BookID   int `json:"book_id"`
+				StatusID int `json:"status_id"`
+			} `json:"user_books"`
+		} `json:"me"`
+	}
+	if err := c.query(ctx, q, map[string]any{"ids": bookIDs}, &out); err != nil {
+		return nil, err
+	}
+	statuses := map[int]int{}
+	for _, me := range out.Me {
+		for _, ub := range me.UserBooks {
+			statuses[ub.BookID] = ub.StatusID
+		}
+	}
+	return statuses, nil
+}
+
+// StatusRead is Hardcover's status id for a book that's been read.
+const StatusRead = statusRead

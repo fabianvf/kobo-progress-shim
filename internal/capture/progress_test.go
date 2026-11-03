@@ -3,6 +3,8 @@ package capture
 import (
 	"net/http"
 	"testing"
+
+	"github.com/fabianvf/kobo-progress-shim/internal/accounts"
 )
 
 const stateURI = "/kobo/tok/v1/library/b3c8d491-a9bb-46b3-b6dd-3230f751e971/state"
@@ -31,7 +33,7 @@ func TestProgressFromStatePut(t *testing.T) {
 		t.Fatalf("got %d events", len(got))
 	}
 	p := got[0]
-	if p.Percent != 6 || p.Status != "Reading" || p.LastModified != "2026-11-02T15:23:39Z" ||
+	if p.User != accounts.Key("tok") || p.Percent != 6 || p.Status != "Reading" || p.LastModified != "2026-11-02T15:23:39Z" ||
 		p.Source != "OEBPS/text/9780061801150_Bodymatter.xhtml" {
 		t.Fatalf("wrong event for %s: %d %s", p.EntitlementID, p.Percent, p.Status)
 	}
@@ -76,7 +78,7 @@ func TestObserverPanicIsContained(t *testing.T) {
 func TestRatingIgnoresResponseStatus(t *testing.T) {
 	uri := "/kobo/tok/v1/products/c1b7071d-72cd-4472-bdfa-348cb011fed1/rating/4"
 	got, ok := ratingFrom(stateExchange("POST", uri, 404, ""))
-	if !ok || got.Stars != 4 || got.ProductID != "c1b7071d-72cd-4472-bdfa-348cb011fed1" {
+	if !ok || got.User != accounts.Key("tok") || got.Stars != 4 || got.ProductID != "c1b7071d-72cd-4472-bdfa-348cb011fed1" {
 		t.Fatalf("got %+v, %v", got, ok)
 	}
 	if _, ok := ratingFrom(stateExchange("GET", uri, 200, "")); ok {
@@ -97,7 +99,7 @@ func TestSyncedBooks(t *testing.T) {
 		{"ChangedReadingState":{"ReadingState":{"EntitlementId":"c"}}}
 	]`))
 	got := syncedBooksFrom(e)
-	if len(got) != 2 || got[0].Title != "The monster-god of Mamurth" || got[0].Authors[0] != "Edmond Hamilton" || got[1].ISBN != "9780061020681" || got[1].RevisionID != "r" {
+	if len(got) != 2 || got[0].User != accounts.Key("tok") || got[0].Title != "The monster-god of Mamurth" || got[0].Authors[0] != "Edmond Hamilton" || got[1].ISBN != "9780061020681" || got[1].RevisionID != "r" {
 		t.Fatalf("got %+v", got)
 	}
 }

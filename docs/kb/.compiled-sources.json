@@ -1,15 +1,19 @@
 {
-  "cmd/kobo-capture/main.go": "246e911302875a72eeb4c9049dec4ae53d5edcefb5a715c29f6d74dbc9ae77fd",
+  "cmd/backfill/main.go": "2c67e2be65ad0882dabe1b261b4a0f0a61cb5f6766e69a2370c003f5cace7d91",
+  "cmd/kobo-capture/main.go": "335cae98430d374633853b01509f6d68f984edb259ca1378a35cd4747a2df203",
   "cmd/match-eval/main.go": "a7bba0048bbf6f02db75f407269f263a8033b0e966d2671e09e4451f773d2060",
-  "internal/activity/page.go": "568ec590f206b47d529a4d779e41f530655c848567b0994447750c93c7a346ba",
-  "internal/capture/progress.go": "e648480ca48d2cdd00789c906d3208243a501b5a7fe9eb71078caa482daf69e9",
+  "internal/accounts/accounts.go": "cdf25dc6e9f6283371bb32e1fceefaea2c5cb7017e8d4a09f7a83034d1b2ed9a",
+  "internal/activity/page.go": "f97354246777ef706dea8410ba885113684521a44c163e70436da7f34c11ddc9",
+  "internal/capture/progress.go": "cfdd31a18458fe2db874899db6190c981f132633f792ad1d5166203359a7c309",
   "internal/capture/proxy.go": "078a516ea512193bf97320163bb421c5b70c1c6690c7f0a42a9ac670696eb964",
   "internal/capture/recorder.go": "a9850af0e2b9940634bda67d2d98af169943fef5eef8a9f7c2c8a5102684974a",
   "internal/capture/redact.go": "ff6e5594d157a764d199cc321744662523c20b0b5cb93e796b3e632c62d8750c",
-  "internal/dryrun/worker.go": "d78c0071a163a5e3d3be3cd93a2e01ff41cdf55e8a93ccbbda055997a88da6ae",
-  "internal/hardcover/client.go": "f28950a8afcb83d92dd7b81dc7689414f6d702b4e48ea2e529dd2746247e9512",
-  "internal/hardcover/writes.go": "ec175083df294c8214cf6b980eaebf4c61827fbd1371a74659c612bd12732c06",
+  "internal/cwasync/cwa.go": "ce8bb69f108ea679aa1aa75ec3f1d09c189658216fc19f7754f9baa0130f1642",
+  "internal/cwasync/sync.go": "7bc5e10629511d1aa9ff4f52bb7969b9b3347f09582904e3103f14ce40ad0055",
+  "internal/dryrun/worker.go": "d64702402278363251600e1e2777b1cd8d79432915d08c90cf7acc53dda3edea",
+  "internal/hardcover/client.go": "bdf4d739f8ad5d9d32010a88350498f0cba4654930fdb93090f46154f04de7dd",
+  "internal/hardcover/writes.go": "ff2a728f060fa3cb88fae185681dd14c929ae1b550acd17c558da764202fdd61",
   "internal/kobostore/client.go": "363c5ae0657d736244dca31feab98acf458f1bbd2c4256372439672ad37fde1e",
-  "internal/match/match.go": "532f224ea03aee33882c0673232a82c6c8a005fb0f120b25e914287418911b48",
-  "internal/store/store.go": "ad6e6965ed3bda4cfa885e76a9228486caf38220577c8ff0a186326b1f4fdf81"
+  "internal/match/match.go": "7840885db41aca2b849df83dd16151b4826c7528bfbb70ff7e3395d81a0e8532",
+  "internal/store/store.go": "e411b1040acfa87e07352355b6efa9d0babd8f43795b45886513676a97a7ec7a"
 }

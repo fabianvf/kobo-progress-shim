@@ -51,6 +51,11 @@ func progress(percent int, status string) capture.Progress {
 	return capture.Progress{EntitlementID: "id", Percent: percent, Status: status, Headers: http.Header{"Authorization": {secret}}, Source: "OEBPS/9780061801150_x.xhtml"}
 }
 
+// one gives every Kobo the same account, as a single-user setup does.
+func one(lookup match.Lookup, writer Writer) Accounts {
+	return func(string) Account { return Account{Lookup: lookup, Writer: writer} }
+}
+
 func openStore(t *testing.T) (*store.Store, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "shim.db")
@@ -72,7 +77,7 @@ func capturedLog(t *testing.T) *bytes.Buffer {
 
 func book(t *testing.T, s *store.Store, id string) store.Book {
 	t.Helper()
-	b, ok, err := s.Get(context.Background(), id)
+	b, ok, err := s.Get(context.Background(), "", id)
 	if err != nil || !ok {
 		t.Fatalf("book %s: ok=%v err=%v", id, ok, err)
 	}
@@ -83,7 +88,7 @@ func TestMatchesAndNeverKeepsAuth(t *testing.T) {
 	logged := capturedLog(t)
 	s, path := openStore(t)
 	kobo := found()
-	w := New(kobo, fakeLookup{books: []match.Book{lightFantastic}}, nil, s, true)
+	w := New(kobo, one(fakeLookup{books: []match.Book{lightFantastic}}, nil), s, true)
 	w.Progress(progress(6, "Reading"))
 	w.Progress(progress(7, "Reading"))
 	w.Close()
@@ -114,7 +119,7 @@ func TestFailedLookupIsRetried(t *testing.T) {
 	capturedLog(t)
 	s, _ := openStore(t)
 	kobo := &fakeKobo{err: errors.New("status 403")}
-	w := New(kobo, fakeLookup{books: []match.Book{lightFantastic}}, nil, s, true)
+	w := New(kobo, one(fakeLookup{books: []match.Book{lightFantastic}}, nil), s, true)
 	w.Progress(progress(6, "Reading"))
 	w.Progress(progress(7, "Reading"))
 	w.Close()
@@ -131,11 +136,11 @@ func TestCWABookMatchesFromSync(t *testing.T) {
 	s, _ := openStore(t)
 	kobo := &fakeKobo{err: kobostore.ErrNotFound}
 	hamilton := match.Book{ID: 545372, Title: "The Monster-God of Mamurth", Authors: []string{"Edmond Hamilton"}}
-	w := New(kobo, fakeLookup{books: []match.Book{hamilton}}, nil, s, true)
-	w.SyncedBook(capture.SyncedBook{EntitlementID: "cwa", RevisionID: "cwa", Title: "The monster-god of Mamurth", Authors: []string{"Edmond Hamilton"}})
-	w.Progress(capture.Progress{EntitlementID: "cwa", Percent: 100, Status: "Finished"})
-	w.Rating(capture.Rating{ProductID: "cwa", Stars: 4})
-	w.Close()
+	w := New(kobo, one(fakeLookup{books: []match.Book{hamilton}}, nil), s, true)
+	w.Close() // handled in order here, because the queues are read in any order
+	w.handle(capture.SyncedBook{EntitlementID: "cwa", RevisionID: "cwa", Title: "The monster-god of Mamurth", Authors: []string{"Edmond Hamilton"}})
+	w.handle(capture.Progress{EntitlementID: "cwa", Percent: 100, Status: "Finished"})
+	w.handle(capture.Rating{ProductID: "cwa", Stars: 4})
 	b := book(t, s, "cwa")
 	if !b.Resolved() || b.HardcoverID != 545372 || b.Shelf != shelfRead || b.Rating != 4 {
 		t.Fatalf("book = %+v", b)
@@ -145,7 +150,7 @@ func TestCWABookMatchesFromSync(t *testing.T) {
 func TestReadStaysRead(t *testing.T) {
 	capturedLog(t)
 	s, _ := openStore(t)
-	w := New(found(), fakeLookup{books: []match.Book{lightFantastic}}, nil, s, true)
+	w := New(found(), one(fakeLookup{books: []match.Book{lightFantastic}}, nil), s, true)
 	w.Progress(progress(100, "Finished"))
 	w.Progress(progress(36, "Reading"))
 	w.Close()
@@ -157,7 +162,7 @@ func TestReadStaysRead(t *testing.T) {
 func TestRatingFindsBookByRevision(t *testing.T) {
 	logged := capturedLog(t)
 	s, _ := openStore(t)
-	w := New(found(), fakeLookup{books: []match.Book{lightFantastic}}, nil, s, true)
+	w := New(found(), one(fakeLookup{books: []match.Book{lightFantastic}}, nil), s, true)
 	w.Progress(progress(6, "Reading"))
 	w.Rating(capture.Rating{ProductID: "rev", Stars: 5})
 	w.Rating(capture.Rating{ProductID: "unknown", Stars: 3})
@@ -181,10 +186,10 @@ func TestConfirmedMatchSurvivesSync(t *testing.T) {
 	if err := s.Put(ctx, store.Book{EntitlementID: "id", Title: "Mine", Outcome: "review"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Confirm(ctx, "id", 9); err != nil {
+	if _, err := s.Confirm(ctx, "", "id", 9); err != nil {
 		t.Fatal(err)
 	}
-	w := New(found(), fakeLookup{}, nil, s, true)
+	w := New(found(), one(fakeLookup{}, nil), s, true)
 	w.SyncedBook(capture.SyncedBook{EntitlementID: "id", Title: "Other"})
 	w.Close()
 	if b := book(t, s, "id"); b.HardcoverID != 9 || b.Outcome != store.Confirmed || b.Title != "Mine" {
@@ -208,7 +213,7 @@ func TestWritesResolvedBooksOnly(t *testing.T) {
 	logged := capturedLog(t)
 	s, _ := openStore(t)
 	writer := &fakeWriter{}
-	w := New(found(), fakeLookup{books: []match.Book{lightFantastic}}, writer, s, true)
+	w := New(found(), one(fakeLookup{books: []match.Book{lightFantastic}}, writer), s, true)
 	p := progress(100, "Finished")
 	p.LastModified = "2026-11-09T01:02:03Z"
 	w.Progress(p)
@@ -232,7 +237,7 @@ func TestWritesResolvedBooksOnly(t *testing.T) {
 	}
 
 	writer = &fakeWriter{}
-	review := New(found(), fakeLookup{}, writer, s, true)
+	review := New(found(), one(fakeLookup{}, writer), s, true)
 	review.Progress(capture.Progress{EntitlementID: "other", Percent: 50, Status: "Reading"})
 	review.Close()
 	if len(writer.wants) != 0 {
@@ -244,7 +249,7 @@ func TestFailedWriteStaysPendingAndRetries(t *testing.T) {
 	capturedLog(t)
 	s, _ := openStore(t)
 	writer := &fakeWriter{err: errors.New("hardcover down")}
-	w := New(found(), fakeLookup{books: []match.Book{lightFantastic}}, writer, s, false)
+	w := New(found(), one(fakeLookup{books: []match.Book{lightFantastic}}, writer), s, false)
 	w.Progress(progress(6, "Reading"))
 	w.Rating(capture.Rating{ProductID: "rev", Stars: 5})
 	w.Close()
@@ -255,7 +260,7 @@ func TestFailedWriteStaysPendingAndRetries(t *testing.T) {
 
 	writer.err = nil
 	ctx := context.Background()
-	retry := New(found(), fakeLookup{}, writer, s, false)
+	retry := New(found(), one(fakeLookup{}, writer), s, false)
 	if err := retry.handleRetry(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +290,7 @@ func TestResyncCantCrowdOutProgress(t *testing.T) {
 	capturedLog(t)
 	s, _ := openStore(t)
 	kobo := &blockingKobo{fakeKobo: *found(), entered: make(chan struct{}, 2), release: make(chan struct{})}
-	w := New(kobo, fakeLookup{books: []match.Book{lightFantastic}}, nil, s, true)
+	w := New(kobo, one(fakeLookup{books: []match.Book{lightFantastic}}, nil), s, true)
 	w.Progress(progress(6, "Reading"))
 	<-kobo.entered // the worker is stuck on a lookup, so the queues can only fill
 	for i := range 2 * queueSize {
@@ -310,10 +315,36 @@ func (crashingWriter) Reconcile(context.Context, hardcover.Want, bool) ([]string
 func TestProgressIsPendingBeforeTheWrite(t *testing.T) {
 	capturedLog(t)
 	s, _ := openStore(t)
-	w := New(found(), fakeLookup{books: []match.Book{lightFantastic}}, crashingWriter{}, s, false)
+	w := New(found(), one(fakeLookup{books: []match.Book{lightFantastic}}, crashingWriter{}), s, false)
 	w.Progress(progress(6, "Reading"))
 	w.Close()
 	if b := book(t, s, "id"); !b.Pending {
 		t.Fatalf("book = %+v", b)
+	}
+}
+
+func TestOnlyTheOwningAccountWrites(t *testing.T) {
+	capturedLog(t)
+	s, _ := openStore(t)
+	mine := &fakeWriter{}
+	accounts := func(user string) Account {
+		if user == "me" {
+			return Account{Lookup: fakeLookup{books: []match.Book{lightFantastic}}, Writer: mine}
+		}
+		return Account{}
+	}
+	w := New(found(), accounts, s, true)
+	p := progress(6, "Reading")
+	p.User = "me"
+	w.Progress(p)
+	p.User = "stranger"
+	w.Progress(p)
+	w.Close()
+	if len(mine.wants) != 1 {
+		t.Fatalf("wants = %+v", mine.wants)
+	}
+	stranger, ok, err := s.Get(context.Background(), "stranger", "id")
+	if err != nil || !ok || stranger.Outcome != "" || stranger.Pending {
+		t.Fatalf("stranger's book = %+v, ok %v, err %v", stranger, ok, err)
 	}
 }

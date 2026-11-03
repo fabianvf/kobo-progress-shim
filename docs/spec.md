@@ -68,7 +68,8 @@ Status:
 - `Finished` or 100%: read, with the finish date from `StatusInfo.LastModified`.
 - `Reading` above 1%: currently reading, with progress.
 - Otherwise: no write.
-- A book already marked read stays read. Re-reads aren't tracked.
+- A book already marked read stays read. Re-reads aren't tracked, so a book read
+  on Hardcover gets no new read, even when it has no dated read.
 
 Ratings:
 
@@ -93,6 +94,25 @@ Hardcover writes:
 - `DRY_RUN=true` is the default and logs the intended write.
 - No bulk mutation covers shelves or reads across books, so writes go one at a time.
 
+Accounts:
+
+- A user is the CWA sync token in the Kobo's path. `ACCOUNTS_FILE` lists each
+  user's Kobo token and Hardcover token. Without it, `HARDCOVER_API_KEY` and an
+  optional `KOBO_SYNC_TOKEN` make one account.
+- Books are saved per user. A Kobo no account claims is saved but never written.
+
+Hardcover to CWA, so the Kobo shows what Hardcover has as read:
+
+- Hourly, CWA's library is listed over OPDS as the robot account, and each CWA
+  book is matched like any other. Books needing review show on the activity page.
+- A book read on Hardcover is set Finished through CWA's Kobo state API, with the
+  user's token, unless the Kobo is partway through it. The Kobo picks it up on its
+  next sync.
+- Only a Finished the sync set is ever undone, when Hardcover no longer has the
+  book as read. Progress is never copied. Store and Libby books aren't covered.
+- Needs `CWA_USER`, `CWA_PASSWORD` and an account with a Kobo token. `DRY_RUN`
+  applies.
+
 Activity page, on the admin port: recent events, last write result per book, and
 the review queue with a field for a Hardcover book id or URL. Nothing else on that
 port is reachable from the Kobo's route.
@@ -112,6 +132,7 @@ Hardcover token is logged or stored.
 ## Not verified
 
 - Store books. Expected to behave like Libby books, not seen yet.
+- The Kobo applying a Finished the CWA sync set, and whether it reports it back.
 - A CWA book's not-found response from the store lookup. The lookup itself works
   live: a Libby and a store book each returned ISBN, title and author.
 - A newly added Libby or store book appearing in sync with metadata.
