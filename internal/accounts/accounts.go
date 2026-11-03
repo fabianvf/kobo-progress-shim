@@ -21,6 +21,11 @@ type Account struct {
 	Name           string `json:"name"`
 	KoboToken      string `json:"kobo_token"`
 	HardcoverToken string `json:"hardcover_token"`
+	// Set only for an account made through setup, whose CWA user the shim
+	// created, so the shim knows its password and can mark its shelves to sync.
+	Email       string `json:"email,omitempty"`
+	CWAUser     string `json:"cwa_user,omitempty"`
+	CWAPassword string `json:"cwa_password,omitempty"`
 }
 
 // Key identifies the account in the store and logs without exposing its token.

@@ -184,3 +184,19 @@ func (c *Client) Statuses(ctx context.Context, bookIDs []int) (map[int]int, erro
 
 // StatusRead is Hardcover's status id for a book that's been read.
 const StatusRead = statusRead
+
+// Username checks the token works and returns whose it is.
+func (c *Client) Username(ctx context.Context) (string, error) {
+	var out struct {
+		Me []struct {
+			Username string `json:"username"`
+		} `json:"me"`
+	}
+	if err := c.query(ctx, `query { me { username } }`, nil, &out); err != nil {
+		return "", err
+	}
+	if len(out.Me) == 0 || out.Me[0].Username == "" {
+		return "", fmt.Errorf("hardcover: the token names no user")
+	}
+	return out.Me[0].Username, nil
+}

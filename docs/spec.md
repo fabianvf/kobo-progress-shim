@@ -113,6 +113,19 @@ Hardcover to CWA, so the Kobo shows what Hardcover has as read:
 - Needs `CWA_USER`, `CWA_PASSWORD` and an account with a Kobo token. `DRY_RUN`
   applies.
 
+Collections, downloads and setup:
+
+- Each user's Hardcover shelves and lists become Kobo collections, plus one named
+  Hardcover holding everything on any of them. Only what the sync added is changed.
+- A book Hardcover has as being read gets Reading and its percent in CWA, only if
+  the Kobo hasn't opened that copy.
+- Want to Read books the library lacks go to LazyLibrarian one at a time, through
+  OpenLibrary, or LazyLibrarian's Hardcover source with `LL_SOURCE=HardCover`.
+  Needs `LL_URL` and `LL_API_KEY`.
+- A setup page on `SETUP_ADDR` at `SETUP_PATH` (default `/setup/`), behind Cloudflare Access, takes a Hardcover key,
+  makes the CWA user with shelf-only sync, and shows the Kobo's `api_endpoint`.
+  Needs `ACCOUNTS_KEY`, `ACCESS_TEAM`, `ACCESS_AUD` and `PUBLIC_URL`.
+
 Activity page, on the admin port: recent events, last write result per book, and
 the review queue with a field for a Hardcover book id or URL. Nothing else on that
 port is reachable from the Kobo's route.

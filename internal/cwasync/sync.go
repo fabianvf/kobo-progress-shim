@@ -29,38 +29,60 @@ const (
 const (
 	wouldFinish = "would finish"
 	wouldUnread = "would unread"
+	wouldRead   = "would read"
 )
 
 // Hardcover is the read side the sync needs.
 type Hardcover interface {
 	match.Lookup
-	Statuses(ctx context.Context, bookIDs []int) (map[int]int, error)
+	Library(ctx context.Context) (hardcover.Library, error)
 }
 
 type Library interface {
 	Books(ctx context.Context) ([]Book, error)
 	State(ctx context.Context, token, uuid string) (State, error)
 	SetStatus(ctx context.Context, token, uuid string, current State, status string) error
+	CreateTag(ctx context.Context, token, name string, items []string) (string, error)
+	RenameTag(ctx context.Context, token, id, name string) error
+	AddToTag(ctx context.Context, token, id string, items []string) error
+	RemoveFromTag(ctx context.Context, token, id string, items []string) error
+	DeleteTag(ctx context.Context, token, id string) error
+}
+
+// Shelves makes a shelf that syncs to the Kobo, which only its owner can do.
+type Shelves interface {
+	CreateSyncedShelf(ctx context.Context, user, password, name string) error
+}
+
+// Downloader requests what a user wants to read that the library lacks.
+type Downloader interface {
+	Want(ctx context.Context, user string, lib hardcover.Library, have map[int]bool) error
 }
 
 // Account is one user the sync runs for. Only an account with a Kobo token can
 // be synced, because CWA's read status belongs to the user the token names.
+// CWAUser and CWAPassword are set only for an account the shim created, whose
+// Kobo syncs only its shelves.
 type Account struct {
-	Key       string
-	KoboToken string
-	Hardcover Hardcover
+	Key         string
+	KoboToken   string
+	Hardcover   Hardcover
+	CWAUser     string
+	CWAPassword string
 }
 
 type Syncer struct {
 	cwa      Library
+	shelves  Shelves    // nil means no account syncs only shelves
+	wanted   Downloader // nil means nothing is downloaded
 	books    *store.Store
-	accounts []Account
+	accounts func() []Account
 	dryRun   bool
 	pause    time.Duration // between CWA calls, to stay out of the Kobo's way
 }
 
-func New(cwa Library, books *store.Store, accounts []Account, dryRun bool) *Syncer {
-	return &Syncer{cwa: cwa, books: books, accounts: accounts, dryRun: dryRun, pause: 200 * time.Millisecond}
+func New(cwa Library, shelves Shelves, wanted Downloader, books *store.Store, accounts func() []Account, dryRun bool) *Syncer {
+	return &Syncer{cwa: cwa, shelves: shelves, wanted: wanted, books: books, accounts: accounts, dryRun: dryRun, pause: 200 * time.Millisecond}
 }
 
 // Run syncs after delay and then every interval until ctx ends.
@@ -85,7 +107,7 @@ func (s *Syncer) Once(ctx context.Context) {
 			log.Printf("cwa sync failed: %T", recovered)
 		}
 	}()
-	for _, a := range s.accounts {
+	for _, a := range s.accounts() {
 		runCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 		if err := s.account(runCtx, a); err != nil {
 			log.Printf("cwa sync %s: %v", a.Key, err)
@@ -109,19 +131,27 @@ func (s *Syncer) account(ctx context.Context, a Account) error {
 			resolved = append(resolved, b)
 		}
 	}
-	var ids []int
-	for _, b := range resolved {
-		ids = append(ids, b.HardcoverID)
-	}
-	slices.Sort(ids)
-	statuses, err := a.Hardcover.Statuses(ctx, slices.Compact(ids))
+	lib, err := a.Hardcover.Library(ctx)
 	if err != nil {
 		return err
 	}
+	have := map[int]bool{}
+	byHardcover := map[int][]string{}
 	for _, b := range resolved {
-		if err := s.follow(ctx, a, b, statuses[b.HardcoverID] == hardcover.StatusRead); err != nil {
+		have[b.HardcoverID] = true
+		byHardcover[b.HardcoverID] = append(byHardcover[b.HardcoverID], b.EntitlementID)
+		if err := s.follow(ctx, a, b, lib.Status[b.HardcoverID] == hardcover.StatusRead); err != nil {
 			return err
 		}
+		if err := s.progress(ctx, a, b, lib); err != nil {
+			return err
+		}
+	}
+	if err := s.collections(ctx, a, lib, byHardcover); err != nil {
+		return err
+	}
+	if s.wanted != nil {
+		return s.wanted.Want(ctx, a.Key, lib, have)
 	}
 	return nil
 }
@@ -208,6 +238,45 @@ func (s *Syncer) follow(ctx context.Context, a Account, b store.Book, read bool)
 		return s.save(ctx, a, b, store.CWAState{Status: statusUnread}, "marked unread in CWA, not read on Hardcover")
 	}
 	return nil
+}
+
+// progress sets Reading and Hardcover's percent on a book Hardcover has as being
+// read, but only while the Kobo has never opened this copy. Once it has a place
+// in the book the Kobo owns its progress, because a percent with no place could
+// move the reader somewhere wrong.
+func (s *Syncer) progress(ctx context.Context, a Account, b store.Book, lib hardcover.Library) error {
+	percent, reading := lib.Progress[b.HardcoverID]
+	if lib.Status[b.HardcoverID] != statusReadingID || !reading || percent <= 0 {
+		return nil
+	}
+	st, err := s.books.CWAState(ctx, a.Key, b.EntitlementID)
+	if err != nil {
+		return err
+	}
+	if st.Status == statusFinished || st.Status == "kobo has it" {
+		return nil
+	}
+	if s.dryRun {
+		if st.Status == wouldRead {
+			return nil
+		}
+		return s.save(ctx, a, b, store.CWAState{Status: wouldRead}, fmt.Sprintf("would set reading at %.0f%% in CWA", percent))
+	}
+	current, err := s.state(ctx, a, b)
+	if err != nil {
+		return err
+	}
+	if current.Located || current.Status == statusFinished {
+		return s.books.SetCWAState(ctx, a.Key, b.EntitlementID, store.CWAState{Status: "kobo has it"})
+	}
+	if current.Status == statusReading && current.Percent != nil && int(*current.Percent) == int(percent) {
+		return nil
+	}
+	current.Percent, current.SourcePercent = &percent, &percent
+	if err := s.cwa.SetStatus(ctx, a.KoboToken, b.EntitlementID, current, statusReading); err != nil {
+		return err
+	}
+	return s.save(ctx, a, b, store.CWAState{Status: statusReading, Marked: true}, fmt.Sprintf("set reading at %.0f%% in CWA, as on Hardcover", percent))
 }
 
 func (s *Syncer) state(ctx context.Context, a Account, b store.Book) (State, error) {

@@ -94,3 +94,43 @@ func TestErrorsNeverCarryTheToken(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestSessionKeepsSecureCookiesOverHTTP(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/login" && r.Method == http.MethodGet:
+			io.WriteString(w, `<form><input type="hidden" name="csrf_token" value="tok"></form>`)
+		case r.URL.Path == "/login":
+			if r.FormValue("csrf_token") != "tok" || r.FormValue("password") != "pw" {
+				io.WriteString(w, `<div class="alert alert-danger">Wrong Username or Password</div>`)
+				return
+			}
+			http.SetCookie(w, &http.Cookie{Name: "session", Value: "s1", Secure: true, HttpOnly: true})
+			http.Redirect(w, r, "/", http.StatusFound)
+		case r.URL.Path == "/shelf/create" && r.Method == http.MethodGet:
+			if c, err := r.Cookie("session"); err != nil || c.Value != "s1" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			io.WriteString(w, `<input type="hidden" name="csrf_token" value="tok2">`)
+		case r.URL.Path == "/shelf/create":
+			if c, err := r.Cookie("session"); err != nil || c.Value != "s1" || r.FormValue("kobo_sync") != "on" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			http.Redirect(w, r, "/shelf/9", http.StatusFound)
+		}
+	}))
+	defer server.Close()
+	base, _ := url.Parse(server.URL + "/")
+	if _, err := Login(context.Background(), base, "u", "wrong"); err == nil {
+		t.Fatal("a bad login worked")
+	}
+	s, err := Login(context.Background(), base, "u", "pw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateSyncedShelf(context.Background(), "Want to Read"); err != nil {
+		t.Fatal(err)
+	}
+}

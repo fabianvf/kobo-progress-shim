@@ -70,6 +70,20 @@ CREATE TABLE IF NOT EXISTS events (
 	detail TEXT NOT NULL,
 	user TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS accounts (
+	email TEXT PRIMARY KEY,
+	sealed BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS requests (
+	hardcover_id INTEGER PRIMARY KEY,
+	data TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS collections (
+	user TEXT NOT NULL,
+	key TEXT NOT NULL,
+	data TEXT NOT NULL,
+	PRIMARY KEY (user, key)
+);
 CREATE TABLE IF NOT EXISTS cwa_state (
 	user TEXT NOT NULL,
 	entitlement_id TEXT NOT NULL,
@@ -147,6 +161,9 @@ func (s *Store) AdoptUnowned(ctx context.Context, user string) error {
 	}
 	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx, `UPDATE OR IGNORE books SET user = ?, data = json_set(data, '$.User', ?) WHERE user = ''`, user, user); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE OR IGNORE collections SET user = ? WHERE user = ''`, user); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE OR IGNORE cwa_state SET user = ? WHERE user = ''`, user); err != nil {
@@ -259,6 +276,144 @@ func (s *Store) SetCWAState(ctx context.Context, user, id string, st CWAState) e
 		ON CONFLICT (user, entitlement_id) DO UPDATE SET status = excluded.status, marked = excluded.marked`,
 		user, id, st.Status, st.Marked)
 	return err
+}
+
+// Request is a Hardcover book someone wants that the library doesn't have, and
+// what was done to get it. There's one per book, whoever asked for it first.
+type Request struct {
+	HardcoverID int
+	Title       string
+	Users       []string
+	WorkID      string // the OpenLibrary work, which is LazyLibrarian's book id
+	State       string
+	Detail      string
+	Updated     time.Time
+}
+
+func (s *Store) Request(ctx context.Context, hardcoverID int) (Request, bool, error) {
+	var data string
+	err := s.db.QueryRowContext(ctx, `SELECT data FROM requests WHERE hardcover_id = ?`, hardcoverID).Scan(&data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Request{}, false, nil
+	}
+	if err != nil {
+		return Request{}, false, err
+	}
+	var r Request
+	return r, true, json.Unmarshal([]byte(data), &r)
+}
+
+func (s *Store) PutRequest(ctx context.Context, r Request) error {
+	data, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO requests (hardcover_id, data) VALUES (?, ?)
+		ON CONFLICT (hardcover_id) DO UPDATE SET data = excluded.data`, r.HardcoverID, string(data))
+	return err
+}
+
+func (s *Store) Requests(ctx context.Context) ([]Request, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT data FROM requests ORDER BY hardcover_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Request
+	for rows.Next() {
+		var data string
+		if err := rows.Scan(&data); err != nil {
+			return nil, err
+		}
+		var r Request
+		if err := json.Unmarshal([]byte(data), &r); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// Collection is a Kobo collection the CWA sync made for a user, mirroring one
+// Hardcover shelf or list. Items are what the sync last put in it, as CWA book
+// uuids, so it only ever changes what it added.
+type Collection struct {
+	Key    string // "status:1" or "list:<id>"
+	Name   string
+	TagID  string // CWA's shelf uuid
+	Items  []string
+	Synced bool // the shelf is marked to sync to the Kobo
+}
+
+func (s *Store) Collections(ctx context.Context, user string) ([]Collection, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT data FROM collections WHERE user = ? ORDER BY key`, user)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Collection
+	for rows.Next() {
+		var data string
+		if err := rows.Scan(&data); err != nil {
+			return nil, err
+		}
+		var c Collection
+		if err := json.Unmarshal([]byte(data), &c); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) PutCollection(ctx context.Context, user string, c Collection) error {
+	data, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO collections (user, key, data) VALUES (?, ?, ?)
+		ON CONFLICT (user, key) DO UPDATE SET data = excluded.data`, user, c.Key, string(data))
+	return err
+}
+
+func (s *Store) DeleteCollection(ctx context.Context, user, key string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM collections WHERE user = ? AND key = ?`, user, key)
+	return err
+}
+
+// SealedAccounts returns each account saved through setup, still encrypted.
+// The store never sees the key, so a copy of shim.db alone exposes no tokens.
+func (s *Store) SealedAccounts(ctx context.Context) (map[string][]byte, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT email, sealed FROM accounts`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]byte{}
+	for rows.Next() {
+		var email string
+		var sealed []byte
+		if err := rows.Scan(&email, &sealed); err != nil {
+			return nil, err
+		}
+		out[email] = sealed
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) PutSealedAccount(ctx context.Context, email string, sealed []byte) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO accounts (email, sealed) VALUES (?, ?)
+		ON CONFLICT (email) DO UPDATE SET sealed = excluded.sealed`, email, sealed)
+	return err
+}
+
+// LastEvent returns when anything was last recorded for a user, zero if never.
+func (s *Store) LastEvent(ctx context.Context, user string) (time.Time, error) {
+	var when sql.NullString
+	if err := s.db.QueryRowContext(ctx, `SELECT max(time) FROM events WHERE user = ?`, user).Scan(&when); err != nil || !when.Valid {
+		return time.Time{}, err
+	}
+	return time.Parse(time.RFC3339, when.String)
 }
 
 // NeedingReview returns books waiting for a person to choose a match.

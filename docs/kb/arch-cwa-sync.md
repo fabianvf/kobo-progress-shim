@@ -3,16 +3,19 @@ id: arch-cwa-sync
 covers:
   - internal/accounts/**
   - internal/cwasync/**
+  - internal/setup/**
+  - internal/wanted/**
 see_also:
   - arch-matching
   - arch-kobo-traffic
 ---
-# Accounts and the Hardcover to CWA sync
+# Accounts, setup and the Hardcover to CWA sync
 
-Hardcover is the source of truth for what has been read. The Kobo reports to
-Hardcover through the worker. CWA records the Kobo's own reports natively, and this
-sync corrects CWA to match Hardcover, so a book read elsewhere shows as finished on
-the Kobo after its next sync. CWA never writes to Hardcover.
+Hardcover is the source of truth. A reader sets up their Kobo and Hardcover and
+never deals with CWA: the shim makes their CWA account, their Kobo collections
+follow their Hardcover shelves and lists, Want to Read is downloaded, and read
+status follows Hardcover. The Kobo reports to Hardcover through the worker. CWA
+never writes to Hardcover.
 
 ## INVARIANT
 
@@ -41,6 +44,29 @@ worker does, and its review decisions appear on the activity page.
 The CWA sync state is its own table rather than fields on store.Book, because the
 worker saves whole books across slow network calls and would overwrite it.
 
+Collections only change what the sync added. A book added on the Kobo stays, and
+one the sync added and the Kobo removed comes back only if it changes on Hardcover.
+"Hardcover" holds every book on any shelf or list, which for a shelf-only account
+is everything on the device. A collection deleted on the Kobo is made again.
+
+Progress goes to CWA only for a copy the Kobo has never opened, with no bookmark
+location. After that the Kobo owns its place in the book.
+
+Want to Read downloads one book at a time, never an author, each book once, and
+never queues a book LazyLibrarian already has Open, Have, Wanted, Snatched or
+Processed. Only books the library doesn't hold, by the shim's own CWA matches, are
+considered, because LazyLibrarian's ids aren't reliable: it re-keyed Legion to the
+id embedded in its epub. An OpenLibrary work must agree on title and author.
+
+Setup is served at /setup/ on the library's public address. The tunnel sends that
+path to the setup port, so it's behind the same Access app, and the /kobo bypass
+doesn't cover it. Setup trusts only Cloudflare Access's signed token, checked against the team's
+keys with the application's AUD, issuer and expiry. On the LAN the setup port can
+be reached without passing Access, so a bare email header proves nothing. Each
+email gets one account and can only see or change its own. Accounts made there
+are sealed with ACCOUNTS_KEY, which the store never holds, and can't claim a Kobo
+a configured account already has.
+
 ## GOTCHA
 
 Read status in CWA is per user, and its Kobo sync reads only that user's status.
@@ -59,7 +85,30 @@ newer server state might win, so the sync only reads books it may change: those
 read on Hardcover, and those it marked itself. Dry run reads nothing.
 
 A state request for a book CWA doesn't hold is redirected to Kobo's store. The
-client doesn't follow redirects, so a token never leaves for Kobo.
+client doesn't follow redirects, so a token never leaves for Kobo. A collection
+request for a tag CWA doesn't know is proxied to Kobo's store by CWA itself, which
+answers 403, so 403 and 404 both mean the collection is gone.
+
+Only a shelf's owner can mark it to sync to the Kobo, and the Kobo API creates
+shelves unmarked, so a shelf-only account's collections would never reach its
+device. For accounts setup made, the shim knows the CWA password and creates the
+shelf through the web form first; the Kobo API's create then returns it by name.
+Configured accounts like Fabian's sync the whole library, where unmarked shelves
+still arrive as collections.
+
+CWA marks its session cookie Secure when it enforces HTTPS or OAuth is on, and the
+shim reaches it over plain HTTP in the pod, so sessions use a jar that sends the
+cookies back anyway. A standard jar would drop them and logins would quietly fail.
+
+The Kobo API's create returns the user's existing shelf of the same name, so the
+sync makes names unique, and a person's own shelf with the same name is adopted.
+
+CWA's new-user form answers 200 whether or not it worked, ignoring the redirect
+its handler returns (cps/admin.py:1671-1683), so the user is looked up afterwards.
+Its refusal is in the page's alert, which is safe to log.
+
+LazyLibrarian's addBook with source HardCover is assumed to keep the Hardcover id
+as its BookID. That's unverified, so the id is checked before queueing.
 
 The OPDS feed has no identifiers, so CWA books match on title and author only.
 
@@ -73,16 +122,27 @@ own code, which updates the timestamp the Kobo sync checks (cps/ub.py:735).
 Writing app.db from the sidecar would depend on CWA's schema and skip that hook.
 
 Accounts keyed by the CWA token in the path, 2026-11-03, because every Kobo
-request already carries it. A setup page per user is deferred until a second user
-exists, since it needs a login and keys stored at rest.
+request already carries it.
+
+Cloudflare Access as the only login for setup, 2026-11-03. Access's policy is the
+guest list, and the page acts only on the signed-in email. A second password would
+add nothing against the one remaining risk, a stolen Access session.
+
+All of a user's Want to Read is downloaded with no approval, 2026-11-03, Fabian's
+call: ebooks are small and storage isn't a concern.
 
 ## VERIFY
 
-    go test -race ./internal/accounts/ ./internal/cwasync/
+    go test -race ./internal/accounts/ ./internal/cwasync/ ./internal/setup/ ./internal/wanted/
 
-Not yet seen live: the Kobo applying a Finished set this way on its next sync,
-and whether it then reports the book Finished back. Reconcile adds no read to a
-book already read on Hardcover, so an echo is harmless either way.
+Live on 2026-11-03: the first run marked 8 books Finished with no errors. A probe
+on throwaway CWA users created a collection, added, renamed, removed and deleted
+it, and made a user, their Kobo token, a synced shelf and a collection in it, then
+deleted the user.
+
+Not yet seen live: the Kobo applying a Finished or a collection on its next sync,
+whether it reports a Finished back, whether a Kobo deletes a downloaded book when
+it leaves every synced collection, and LazyLibrarian's Hardcover source.
 
 ## SEE ALSO
 

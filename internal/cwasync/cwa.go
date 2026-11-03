@@ -103,6 +103,7 @@ type State struct {
 	Status        string
 	Percent       *float64
 	SourcePercent *float64
+	Located       bool // the bookmark has a place in the book, so the Kobo has opened it
 }
 
 type stateJSON struct {
@@ -110,6 +111,9 @@ type stateJSON struct {
 	CurrentBookmark *struct {
 		ProgressPercent              *float64 `json:"ProgressPercent"`
 		ContentSourceProgressPercent *float64 `json:"ContentSourceProgressPercent"`
+		Location                     *struct {
+			Value string `json:"Value"`
+		} `json:"Location"`
 	} `json:"CurrentBookmark"`
 	StatusInfo *struct {
 		Status string `json:"Status"`
@@ -137,6 +141,7 @@ func (c *CWA) State(ctx context.Context, token, uuid string) (State, error) {
 	}
 	if b := states[0].CurrentBookmark; b != nil {
 		st.Percent, st.SourcePercent = b.ProgressPercent, b.ContentSourceProgressPercent
+		st.Located = b.Location != nil && b.Location.Value != ""
 	}
 	return st, nil
 }
@@ -190,6 +195,86 @@ func (c *CWA) do(req *http.Request, op string) ([]byte, error) {
 		return nil, fmt.Errorf("cwa: %s: reading response", op)
 	}
 	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("cwa: %s: status %d", op, resp.StatusCode)
+	}
+	return data, nil
+}
+
+// ErrGone means CWA doesn't know a collection any more, usually because someone
+// deleted it on their Kobo. CWA passes such requests on to Kobo's store, which
+// answers 403, so both that and a 404 count.
+var ErrGone = errors.New("cwa: collection gone")
+
+func tagItems(uuids []string) []map[string]string {
+	items := []map[string]string{}
+	for _, u := range uuids {
+		items = append(items, map[string]string{"RevisionId": u, "Type": "ProductRevisionTagItem"})
+	}
+	return items
+}
+
+// CreateTag makes a collection, or returns the user's existing one of that name,
+// and adds items to it.
+func (c *CWA) CreateTag(ctx context.Context, token, name string, items []string) (string, error) {
+	data, err := c.tagCall(ctx, http.MethodPost, token, nil, map[string]any{"Name": name, "Items": tagItems(items)}, "create collection")
+	if err != nil {
+		return "", err
+	}
+	var id string
+	if err := json.Unmarshal(data, &id); err != nil || id == "" {
+		return "", errors.New("cwa: create collection: unexpected response")
+	}
+	return id, nil
+}
+
+func (c *CWA) RenameTag(ctx context.Context, token, id, name string) error {
+	_, err := c.tagCall(ctx, http.MethodPut, token, []string{id}, map[string]any{"Name": name}, "rename collection")
+	return err
+}
+
+func (c *CWA) AddToTag(ctx context.Context, token, id string, items []string) error {
+	_, err := c.tagCall(ctx, http.MethodPost, token, []string{id, "items"}, map[string]any{"Items": tagItems(items)}, "add to collection")
+	return err
+}
+
+func (c *CWA) RemoveFromTag(ctx context.Context, token, id string, items []string) error {
+	_, err := c.tagCall(ctx, http.MethodPost, token, []string{id, "items", "delete"}, map[string]any{"Items": tagItems(items)}, "remove from collection")
+	return err
+}
+
+func (c *CWA) DeleteTag(ctx context.Context, token, id string) error {
+	_, err := c.tagCall(ctx, http.MethodDelete, token, []string{id}, nil, "delete collection")
+	return err
+}
+
+func (c *CWA) tagCall(ctx context.Context, method, token string, path []string, body any, op string) ([]byte, error) {
+	var reader io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return nil, err
+		}
+		reader = bytes.NewReader(data)
+	}
+	target := c.base.JoinPath(append([]string{"kobo", token, "v1", "library", "tags"}, path...)...)
+	req, err := http.NewRequestWithContext(ctx, method, target.String(), reader)
+	if err != nil {
+		return nil, errors.New("cwa: " + op + ": bad request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("cwa: %s: %w", op, unwrapURL(err))
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("cwa: %s: reading response", op)
+	}
+	switch {
+	case resp.StatusCode == http.StatusNotFound, resp.StatusCode == http.StatusForbidden, resp.StatusCode == http.StatusTemporaryRedirect:
+		return nil, ErrGone
+	case resp.StatusCode < 200 || resp.StatusCode >= 300:
 		return nil, fmt.Errorf("cwa: %s: status %d", op, resp.StatusCode)
 	}
 	return data, nil

@@ -36,7 +36,8 @@ capture, and only the key travels with Progress, Rating and SyncedBook.
 
 The CWA sync main starts changes what the Kobo receives on its next sync, by
 design, through CWA's own state API. It never touches a request in flight, and it
-runs on its own goroutine, so it can't delay one. See arch-cwa-sync.
+runs on its own goroutine, so it can't delay one. The setup page listens on its
+own port, never the Kobo's. See arch-cwa-sync.
 
 The Observer runs on the recorder's goroutine, after the Kobo already has its
 response, so its methods must not block. It reads the unredacted exchange, because

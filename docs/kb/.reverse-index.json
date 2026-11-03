@@ -14,6 +14,12 @@
    ],
    "tests": []
   },
+  "cmd/kobo-capture/sync.go": {
+   "articles": [
+    "arch-capture"
+   ],
+   "tests": []
+  },
   "cmd/match-eval/main.go": {
    "articles": [
     "arch-matching"
@@ -26,8 +32,22 @@
    ],
    "tests": [
     "internal/accounts/accounts_test.go",
+    "internal/accounts/registry_test.go",
     "internal/capture/progress_test.go",
-    "internal/capture/proxy_test.go"
+    "internal/capture/proxy_test.go",
+    "internal/setup/setup_test.go"
+   ]
+  },
+  "internal/accounts/registry.go": {
+   "articles": [
+    "arch-cwa-sync"
+   ],
+   "tests": [
+    "internal/accounts/accounts_test.go",
+    "internal/accounts/registry_test.go",
+    "internal/capture/progress_test.go",
+    "internal/capture/proxy_test.go",
+    "internal/setup/setup_test.go"
    ]
   },
   "internal/activity/page.go": {
@@ -78,6 +98,15 @@
     "internal/dryrun/worker_test.go"
    ]
   },
+  "internal/cwasync/collections.go": {
+   "articles": [
+    "arch-cwa-sync"
+   ],
+   "tests": [
+    "internal/cwasync/cwa_test.go",
+    "internal/cwasync/sync_test.go"
+   ]
+  },
   "internal/cwasync/cwa.go": {
    "articles": [
     "arch-cwa-sync"
@@ -88,6 +117,15 @@
    ]
   },
   "internal/cwasync/sync.go": {
+   "articles": [
+    "arch-cwa-sync"
+   ],
+   "tests": [
+    "internal/cwasync/cwa_test.go",
+    "internal/cwasync/sync_test.go"
+   ]
+  },
+  "internal/cwasync/web.go": {
    "articles": [
     "arch-cwa-sync"
    ],
@@ -114,7 +152,20 @@
     "internal/cwasync/cwa_test.go",
     "internal/cwasync/sync_test.go",
     "internal/dryrun/worker_test.go",
-    "internal/hardcover/writes_test.go"
+    "internal/hardcover/writes_test.go",
+    "internal/wanted/wanted_test.go"
+   ]
+  },
+  "internal/hardcover/library.go": {
+   "articles": [
+    "arch-matching"
+   ],
+   "tests": [
+    "internal/cwasync/cwa_test.go",
+    "internal/cwasync/sync_test.go",
+    "internal/dryrun/worker_test.go",
+    "internal/hardcover/writes_test.go",
+    "internal/wanted/wanted_test.go"
    ]
   },
   "internal/hardcover/writes.go": {
@@ -125,7 +176,8 @@
     "internal/cwasync/cwa_test.go",
     "internal/cwasync/sync_test.go",
     "internal/dryrun/worker_test.go",
-    "internal/hardcover/writes_test.go"
+    "internal/hardcover/writes_test.go",
+    "internal/wanted/wanted_test.go"
    ]
   },
   "internal/kobostore/client.go": {
@@ -146,7 +198,24 @@
     "internal/cwasync/sync_test.go",
     "internal/dryrun/worker_test.go",
     "internal/hardcover/writes_test.go",
-    "internal/match/match_test.go"
+    "internal/match/match_test.go",
+    "internal/wanted/wanted_test.go"
+   ]
+  },
+  "internal/setup/access.go": {
+   "articles": [
+    "arch-cwa-sync"
+   ],
+   "tests": [
+    "internal/setup/setup_test.go"
+   ]
+  },
+  "internal/setup/page.go": {
+   "articles": [
+    "arch-cwa-sync"
+   ],
+   "tests": [
+    "internal/setup/setup_test.go"
    ]
   },
   "internal/store/store.go": {
@@ -158,7 +227,24 @@
     "internal/cwasync/cwa_test.go",
     "internal/cwasync/sync_test.go",
     "internal/dryrun/worker_test.go",
-    "internal/store/store_test.go"
+    "internal/store/store_test.go",
+    "internal/wanted/wanted_test.go"
+   ]
+  },
+  "internal/wanted/clients.go": {
+   "articles": [
+    "arch-cwa-sync"
+   ],
+   "tests": [
+    "internal/wanted/wanted_test.go"
+   ]
+  },
+  "internal/wanted/wanted.go": {
+   "articles": [
+    "arch-cwa-sync"
+   ],
+   "tests": [
+    "internal/wanted/wanted_test.go"
    ]
   }
  },
