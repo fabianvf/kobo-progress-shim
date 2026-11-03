@@ -12,7 +12,7 @@
   "internal/capture/redact.go": "ff6e5594d157a764d199cc321744662523c20b0b5cb93e796b3e632c62d8750c",
   "internal/cwasync/collections.go": "7bdede637a80edc7d3dd92a17970caf295c3398c62e93946dc76ce1bea8239df",
   "internal/cwasync/cwa.go": "d6a2e02f31c6d5d16d4b4a96e134fab39bcd23cb9d38d37a71bec226dd2a8011",
-  "internal/cwasync/sync.go": "6595e175adbb761b9f28c0a5003f9cf08195d3333874d9d40ef8a03a5017f391",
+  "internal/cwasync/sync.go": "30f12040f662753ab855175c800fdc57f82688bdebaa7a1809619cfbce42e89f",
   "internal/cwasync/web.go": "6d2aea382e3d6ac00248db7714d95f105661bdd39ae103d2001d153d99b42690",
   "internal/dryrun/worker.go": "d64702402278363251600e1e2777b1cd8d79432915d08c90cf7acc53dda3edea",
   "internal/hardcover/client.go": "02ef1ea014bf1622f82253aac1ccdde67a148a26dbfcf5018963c3eb8a70bf99",
@@ -22,7 +22,7 @@
   "internal/match/match.go": "7840885db41aca2b849df83dd16151b4826c7528bfbb70ff7e3395d81a0e8532",
   "internal/setup/access.go": "5197240bc59263338ca777ea137570436272fb947582c606f87704ee072de549",
   "internal/setup/page.go": "f0b2c5da97b5d03376a22ce35b98ab0fc3549e7f2a4045faba7850a3fa5f57f0",
-  "internal/store/store.go": "53b3a1e27f8ff100ad545f738e688b7a3e7aacd73674af6c76712ad723c11fe2",
+  "internal/store/store.go": "dd10fcf43871aca21e0e327e2fb3e21131d9669203dd5ad9cff9a44d71038242",
   "internal/wanted/clients.go": "6a6d4eadcd4e28cb4eac3dde524e5e7d3dce1356f680016f64918f213d285849",
-  "internal/wanted/wanted.go": "d7dad7e6fa9e4c661d2d343e955bf2cbead2f3b36660447287619c9b74c85007"
+  "internal/wanted/wanted.go": "ac97cfbb7d9e9773a33d275a810a009efc394c86d0ed63af68f1d16c60493723"
 }

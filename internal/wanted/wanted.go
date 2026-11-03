@@ -97,8 +97,13 @@ func (d *Downloader) request(ctx context.Context, user string, book hardcover.Sh
 	if err != nil {
 		return err
 	}
-	if !slices.Contains(r.Users, user) {
-		r.Users = append(r.Users, user)
+	// Authors came later, and the CWA sync needs them to match an import back
+	// to its request.
+	if !slices.Contains(r.Users, user) || (ok && len(r.Authors) == 0 && len(book.Authors) > 0) {
+		if !slices.Contains(r.Users, user) {
+			r.Users = append(r.Users, user)
+		}
+		r.Authors = book.Authors
 		if ok {
 			if err := d.books.PutRequest(ctx, r); err != nil {
 				return err
@@ -119,7 +124,7 @@ func (d *Downloader) request(ctx context.Context, user string, book hardcover.Sh
 	if ok && !retry {
 		return nil
 	}
-	r.HardcoverID, r.Title = book.ID, book.Title
+	r.HardcoverID, r.Title, r.Authors = book.ID, book.Title, book.Authors
 	if book.Language != "" && book.Language != "eng" {
 		return d.save(ctx, user, r, stateForeign, "its ebook edition isn't in English")
 	}

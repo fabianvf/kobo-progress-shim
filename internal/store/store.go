@@ -283,6 +283,7 @@ func (s *Store) SetCWAState(ctx context.Context, user, id string, st CWAState) e
 type Request struct {
 	HardcoverID int
 	Title       string
+	Authors     []string
 	Users       []string
 	WorkID      string // the OpenLibrary work, when that's how it was found
 	LLID        string // the id LazyLibrarian has it under, once queued or found

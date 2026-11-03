@@ -39,7 +39,11 @@ that's a re-read. Progress is never copied to CWA, because Hardcover's is behind
 the device's, and sending it back could move the reader's place.
 
 Only resolved matches are synced. The sync matches CWA books the same way the
-worker does, and its review decisions appear on the activity page.
+worker does, and its review decisions appear on the activity page. A book that
+doesn't match is also checked against the shim's own Want to Read requests: exactly
+one request with an agreeing author and a fitting title, after dropping a series
+marker like "SS 04:", decides. Imports arrive with release-style titles, and only
+requested books qualify, which is what makes the looser title safe.
 
 The CWA sync state is its own table rather than fields on store.Book, because the
 worker saves whole books across slow network calls and would overwrite it.

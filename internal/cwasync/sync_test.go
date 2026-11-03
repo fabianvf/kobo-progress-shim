@@ -320,3 +320,45 @@ func TestOnlyUnopenedCopiesGetHardcoverProgress(t *testing.T) {
 		t.Fatalf("unchanged progress sent again: %v", lib.sets)
 	}
 }
+
+func TestImportsMatchTheirRequest(t *testing.T) {
+	requests := []store.Request{
+		{HardcoverID: 430150, Title: "Devil Said Bang", Authors: []string{"Richard Kadrey"}},
+		{HardcoverID: 459296, Title: "The Rhesus Chart", Authors: []string{"Charles Stross"}},
+		{HardcoverID: 459290, Title: "Scourged", Authors: []string{"Kevin Hearne"}},
+		{HardcoverID: 1, Title: "Legion", Authors: []string{"Brandon Sanderson"}},
+	}
+	cases := []struct {
+		title, author string
+		want          int
+	}{
+		{"SS 04: Devil Said Bang: A Sandman Slim Novel", "Richard Kadrey", 430150},
+		{"Laundry 05 - Rhesus Chart", "Charles Stross", 459296},
+		{"Scourged: The Iron Druid Chronicles, Book Nine", "Kevin Hearne", 459290},
+		{"Devil Said Bang", "Someone Else", 0},     // the author must agree
+		{"Rhesus Chart", "Charles Stross", 459296}, // a missing "The" is fine
+		{"Book 2: Legion Rising", "Brandon Sanderson", 0},
+	}
+	for _, c := range cases {
+		r, ok := requested(Book{Title: c.title, Authors: []string{c.author}}, requests)
+		if (c.want == 0) == ok || (ok && r.HardcoverID != c.want) {
+			t.Errorf("%q by %s: got %d, %v; want %d", c.title, c.author, r.HardcoverID, ok, c.want)
+		}
+	}
+}
+
+func TestRequestedImportIsSyncedWithoutReview(t *testing.T) {
+	s, lib, hc, _ := setup(t)
+	ctx := context.Background()
+	s.PutRequest(ctx, store.Request{HardcoverID: 3, Title: "Summer Knight", Authors: []string{"Jim Butcher"}, State: "queued"})
+	lib.books = append(lib.books, Book{UUID: "u-import", Title: "Dresden 04 - Summer Knight", Authors: []string{"Jim Butcher"}})
+	hc.statuses = map[int]int{3: 3}
+	syncer(lib, s, hc, false).Once(ctx)
+	b, _, _ := s.Get(ctx, me, "u-import")
+	if !b.Resolved() || b.HardcoverID != 3 || b.Reason != "requested from Want to Read" {
+		t.Fatalf("book = %+v", b)
+	}
+	if !slices.Contains(lib.sets, "u-import=Finished") {
+		t.Errorf("sets = %v", lib.sets)
+	}
+}

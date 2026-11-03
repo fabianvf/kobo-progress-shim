@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"regexp"
 	"slices"
 	"time"
 
@@ -121,9 +122,13 @@ func (s *Syncer) account(ctx context.Context, a Account) error {
 	if err != nil {
 		return err
 	}
+	requests, err := s.books.Requests(ctx)
+	if err != nil {
+		return err
+	}
 	var resolved []store.Book
 	for _, cb := range library {
-		b, err := s.identify(ctx, a, cb)
+		b, err := s.identify(ctx, a, cb, requests)
 		if err != nil {
 			return err
 		}
@@ -159,7 +164,7 @@ func (s *Syncer) account(ctx context.Context, a Account) error {
 // identify matches a CWA book that has no match yet, the same way the worker
 // does, so its decision shows in the review queue and serves the Kobo's reports
 // too. A book already decided isn't searched again, review included.
-func (s *Syncer) identify(ctx context.Context, a Account, cb Book) (store.Book, error) {
+func (s *Syncer) identify(ctx context.Context, a Account, cb Book, requests []store.Request) (store.Book, error) {
 	var out store.Book
 	err := s.books.Update(ctx, a.Key, cb.UUID, func(b *store.Book, ok bool) bool {
 		b.User, b.EntitlementID = a.Key, cb.UUID
@@ -168,17 +173,54 @@ func (s *Syncer) identify(ctx context.Context, a Account, cb Book) (store.Book, 
 			return false
 		}
 		changed := !ok || b.Title != cb.Title || !slices.Equal(b.Authors, cb.Authors)
-		if !changed && b.Outcome != "" {
-			return false
+		if changed || b.Outcome == "" {
+			if !ok {
+				b.RevisionID = cb.UUID // CWA's books use one id for both
+			}
+			b.Title, b.Authors, b.Outcome = cb.Title, cb.Authors, ""
+			dryrun.Decide(ctx, a.Hardcover, b)
 		}
-		if !ok {
-			b.RevisionID = cb.UUID // CWA's books use one id for both
+		if b.Resolved() {
+			return true
 		}
-		b.Title, b.Authors, b.Outcome = cb.Title, cb.Authors, ""
-		dryrun.Decide(ctx, a.Hardcover, b)
-		return true
+		if r, found := requested(cb, requests); found {
+			b.Outcome, b.HardcoverID, b.Reason, b.Suggestion = string(match.Automatic), r.HardcoverID, "requested from Want to Read", ""
+			return true
+		}
+		return changed
 	})
 	return out, err
+}
+
+// seriesPrefix is a release-style series marker before the title, like
+// "SS 04: " or "Laundry 05 - ".
+var seriesPrefix = regexp.MustCompile(`^[^:]*\d[^:]*?\s*(:|\s-\s|\s–\s)\s*`)
+
+// requested finds the Want to Read request a CWA import came from: exactly one
+// requested book whose author agrees and whose title fits, once a series marker
+// is dropped. Only books the shim asked for qualify, which is what makes the
+// looser title safe, since an import's title is often its release name.
+func requested(cb Book, requests []store.Request) (store.Request, bool) {
+	titles := []string{cb.Title}
+	if stripped := seriesPrefix.ReplaceAllString(cb.Title, ""); stripped != cb.Title && stripped != "" {
+		titles = append(titles, stripped)
+	}
+	var hit []store.Request
+	for _, r := range requests {
+		if len(r.Authors) == 0 || r.HardcoverID == 0 {
+			continue
+		}
+		for _, t := range titles {
+			if match.Same(t, cb.Authors, match.Book{Title: r.Title, Authors: r.Authors}) {
+				hit = append(hit, r)
+				break
+			}
+		}
+	}
+	if len(hit) != 1 {
+		return store.Request{}, false
+	}
+	return hit[0], true
 }
 
 // follow sets Finished when Hardcover has the book as read, unless the Kobo is
