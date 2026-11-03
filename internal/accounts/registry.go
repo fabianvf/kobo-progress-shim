@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"sync"
 )
 
@@ -91,13 +92,24 @@ func (r *Registry) ByKey(key string) (Account, bool) {
 	return Account{}, false
 }
 
-func (r *Registry) ByEmail(email string) (Account, bool) {
-	for _, a := range r.All() {
-		if a.Email != "" && a.Email == email {
-			return a, true
+// ByEmail finds an account by its Access email, ignoring case. configured
+// reports whether a person set it up in the file or environment, so setup can
+// show it but not change it.
+func (r *Registry) ByEmail(email string) (a Account, configured, ok bool) {
+	email = strings.ToLower(email)
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, f := range r.fixed {
+		if f.Email != "" && f.Email == email {
+			return f, true, true
 		}
 	}
-	return Account{}, false
+	for _, s := range r.saved {
+		if strings.EqualFold(s.Email, email) {
+			return s, false, true
+		}
+	}
+	return Account{}, false, false
 }
 
 // Save adds or replaces the setup account for a.Email.
@@ -109,8 +121,8 @@ func (r *Registry) Save(ctx context.Context, a Account) error {
 		return errors.New("accounts: an account needs an email, a Kobo token and a Hardcover token")
 	}
 	for _, f := range r.fixed {
-		if f.Key() == a.Key() || f.Key() == Any {
-			return errors.New("accounts: that Kobo already belongs to a configured account")
+		if f.Key() == a.Key() || f.Key() == Any || (f.Email != "" && strings.EqualFold(f.Email, a.Email)) {
+			return errors.New("accounts: that Kobo or email already belongs to a configured account")
 		}
 	}
 	sealed, err := r.seal(a)

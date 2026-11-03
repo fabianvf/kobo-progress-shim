@@ -70,7 +70,9 @@ path to the setup port, so it's behind the same Access app, and the /kobo bypass
 doesn't cover it. Setup trusts only Cloudflare Access's signed token, checked against the team's
 keys with the application's AUD, issuer and expiry. On the LAN the setup port can
 be reached without passing Access, so a bare email header proves nothing. Each
-email gets one account and can only see or change its own. Accounts made there
+email gets one account and can only see or change its own. A configured account
+with an email (ACCOUNT_EMAIL, or email in ACCOUNTS_FILE) is shown on the page but
+not changed there, and setup won't make that email a second account. Accounts made there
 are sealed with ACCOUNTS_KEY, which the store never holds, and can't claim a Kobo
 a configured account already has. The page shows the signed-in reader their own
 CWA login, for browsing on the web. The CWA username is kobo- and the part of the

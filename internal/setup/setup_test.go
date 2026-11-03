@@ -57,7 +57,7 @@ func (f *fakeCWA) CreateUser(_ context.Context, name, email, password string) (s
 func registry(t *testing.T) *accounts.Registry {
 	raw := make([]byte, 32)
 	rand.Read(raw)
-	r, err := accounts.NewRegistry(context.Background(), []accounts.Account{{Name: "fabian", KoboToken: "f", HardcoverToken: "h"}}, memStore{}, base64.StdEncoding.EncodeToString(raw))
+	r, err := accounts.NewRegistry(context.Background(), []accounts.Account{{Name: "fabian", KoboToken: "f", HardcoverToken: "h", Email: "fabian@example.com"}}, memStore{}, base64.StdEncoding.EncodeToString(raw))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestJoiningMakesOneAccount(t *testing.T) {
 	if page := body(t, func() (*http.Response, error) { return http.Get(s.URL) }); !strings.Contains(page, "kobo-brother") {
 		t.Fatalf("CWA login not shown: %s", page)
 	}
-	a, ok := reg.ByEmail("Brother@Example.com")
+	a, _, ok := reg.ByEmail("Brother@Example.com")
 	if !ok || a.HardcoverToken != "good-key" || a.CWAPassword == "" {
 		t.Fatalf("account = %+v", a)
 	}
@@ -208,7 +208,20 @@ func TestTakenNameGetsANumber(t *testing.T) {
 	reg, cwa := registry(t), &fakeCWA{taken: map[string]bool{"kobo-brother": true}}
 	s := server(t, fixedIdentity("brother@work.example"), reg, cwa)
 	body(t, func() (*http.Response, error) { return http.PostForm(s.URL, url.Values{"hardcover_key": {"good-key"}}) })
-	if a, ok := reg.ByEmail("brother@work.example"); !ok || a.CWAUser != "kobo-brother-2" {
+	if a, _, ok := reg.ByEmail("brother@work.example"); !ok || a.CWAUser != "kobo-brother-2" {
 		t.Fatalf("account = %+v, created %v", a, cwa.created)
+	}
+}
+
+func TestConfiguredAccountIsShownNotDuplicated(t *testing.T) {
+	reg, cwa := registry(t), &fakeCWA{}
+	s := server(t, fixedIdentity("Fabian@Example.com"), reg, cwa)
+	page := body(t, func() (*http.Response, error) { return http.Get(s.URL) })
+	if !strings.Contains(page, "api_endpoint=https://library.example/kobo/f") || strings.Contains(page, `name="hardcover_key"`) {
+		t.Fatalf("page = %s", page)
+	}
+	body(t, func() (*http.Response, error) { return http.PostForm(s.URL, url.Values{"hardcover_key": {"good-key"}}) })
+	if len(cwa.created) != 0 || len(reg.All()) != 1 {
+		t.Fatalf("created %v, accounts %d", cwa.created, len(reg.All()))
 	}
 }

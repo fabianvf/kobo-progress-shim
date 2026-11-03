@@ -98,7 +98,7 @@ Accounts:
 
 - A user is the CWA sync token in the Kobo's path. `ACCOUNTS_FILE` lists each
   user's Kobo token and Hardcover token. Without it, `HARDCOVER_API_KEY` and an
-  optional `KOBO_SYNC_TOKEN` make one account.
+  optional `KOBO_SYNC_TOKEN` and `ACCOUNT_EMAIL` make one account.
 - Books are saved per user. A Kobo no account claims is saved but never written.
 
 Hardcover to CWA, so the Kobo shows what Hardcover has as read:

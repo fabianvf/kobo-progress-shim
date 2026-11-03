@@ -135,7 +135,7 @@ If it stopped after a Kobo update or reset, check the <code>api_endpoint=</code>
 and books from the library may disappear from it.</p></details>
 </section>
 
-<section class="card"><h2>Replace your Hardcover key</h2>
+<section class="card"><h2>{{if .Configured}}Your Hardcover key{{else}}Replace your Hardcover key{{end}}</h2>
 <p class="muted">Only needed if your key expired or you made a new one. <a href="` + newKeyURL + `">Make a new key</a>, then paste it here.</p>
 {{else}}
 <section class="card"><h2><span class="num">1</span>Connect Hardcover</h2>
@@ -149,12 +149,14 @@ since the library stops syncing your reading when the key expires. Press <b>Crea
 <li>Paste it here and press Save. It's stored encrypted and only used for your own account.</li>
 </ol>
 {{end}}
-<form method="post"><input type="password" name="hardcover_key" required autocomplete="off" aria-label="Hardcover API key" placeholder="Paste your Hardcover key">
-<p><button class="button">Save</button></p></form>
+{{if .Configured}}<p class="muted">Your account is configured on the server, so its Hardcover key is changed there, not here.</p>
+{{else}}<form method="post"><input type="password" name="hardcover_key" required autocomplete="off" aria-label="Hardcover API key" placeholder="Paste your Hardcover key">
+<p><button class="button">Save</button></p></form>{{end}}
 </section>
 </main></body></html>`))
 
 type pageData struct {
+	Configured                                  bool // set up by Fabian, not through this page
 	Email, Error, Endpoint, HardcoverUser, Seen string
 	LibraryURL, CWAUser, CWAPassword            string
 }
@@ -185,7 +187,8 @@ func (p *Page) show(w http.ResponseWriter, r *http.Request) {
 
 func (p *Page) render(w http.ResponseWriter, r *http.Request, email, problem string) {
 	data := pageData{Email: email, Error: problem}
-	if a, ok := p.registry.ByEmail(email); ok {
+	if a, configured, ok := p.registry.ByEmail(email); ok {
+		data.Configured = configured
 		data.Endpoint = p.publicURL + "/kobo/" + a.KoboToken
 		data.HardcoverUser = a.Name
 		data.LibraryURL, data.CWAUser, data.CWAPassword = p.publicURL+"/", a.CWAUser, a.CWAPassword
@@ -212,7 +215,11 @@ func (p *Page) save(w http.ResponseWriter, r *http.Request) {
 		p.render(w, r, email, "Hardcover didn't accept that key. Copy it again from hardcover.app/account/api.")
 		return
 	}
-	a, ok := p.registry.ByEmail(email)
+	a, configured, ok := p.registry.ByEmail(email)
+	if configured {
+		p.render(w, r, email, "Your account is configured on the server, so its Hardcover key is changed there, not here.")
+		return
+	}
 	if !ok {
 		password, err := newPassword()
 		if err == nil {

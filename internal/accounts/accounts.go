@@ -43,7 +43,9 @@ func Key(token string) string {
 }
 
 // Load reads ACCOUNTS_FILE, a JSON list of accounts. Without one it falls back to
-// HARDCOVER_API_KEY and an optional KOBO_SYNC_TOKEN as a single account.
+// HARDCOVER_API_KEY, with an optional KOBO_SYNC_TOKEN and ACCOUNT_EMAIL, as a
+// single account. An email lets the setup page recognise a configured account
+// instead of offering it a second one.
 func Load() ([]Account, error) {
 	if path := os.Getenv("ACCOUNTS_FILE"); path != "" {
 		data, err := os.ReadFile(path)
@@ -60,7 +62,8 @@ func Load() ([]Account, error) {
 	if token == "" {
 		return nil, nil
 	}
-	return check([]Account{{Name: "default", KoboToken: os.Getenv("KOBO_SYNC_TOKEN"), HardcoverToken: token}})
+	return check([]Account{{Name: "default", KoboToken: os.Getenv("KOBO_SYNC_TOKEN"), HardcoverToken: token,
+		Email: strings.ToLower(strings.TrimSpace(os.Getenv("ACCOUNT_EMAIL")))}})
 }
 
 // check refuses a list where one device could belong to two accounts, because
@@ -70,6 +73,7 @@ func check(list []Account) ([]Account, error) {
 	for i := range list {
 		a := &list[i]
 		a.KoboToken, a.HardcoverToken = strings.TrimSpace(a.KoboToken), strings.TrimSpace(a.HardcoverToken)
+		a.Email = strings.ToLower(strings.TrimSpace(a.Email))
 		if a.HardcoverToken == "" {
 			return nil, fmt.Errorf("accounts: %q has no Hardcover token", a.Name)
 		}
