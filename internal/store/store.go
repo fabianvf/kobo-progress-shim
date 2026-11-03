@@ -284,10 +284,14 @@ type Request struct {
 	HardcoverID int
 	Title       string
 	Users       []string
-	WorkID      string // the OpenLibrary work, which is LazyLibrarian's book id
-	State       string
-	Detail      string
-	Updated     time.Time
+	WorkID      string // the OpenLibrary work, when that's how it was found
+	LLID        string // the id LazyLibrarian has it under, once queued or found
+	// TriedHardcover is set once LazyLibrarian's Hardcover source was tried,
+	// so a book it couldn't add isn't tried that way again.
+	TriedHardcover bool
+	State          string
+	Detail         string
+	Updated        time.Time
 }
 
 func (s *Store) Request(ctx context.Context, hardcoverID int) (Request, bool, error) {

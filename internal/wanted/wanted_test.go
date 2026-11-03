@@ -3,6 +3,7 @@ package wanted
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -29,7 +30,7 @@ type fakeLL struct {
 	statuses map[string]string
 	added    []string
 	queued   []string
-	renumber bool // add under some other id, as an unexpected source might
+	renumber bool // add Hardcover-source books under some other id
 }
 
 func (f *fakeLL) Statuses(context.Context) (map[string]string, error) {
@@ -41,7 +42,7 @@ func (f *fakeLL) Statuses(context.Context) (map[string]string, error) {
 }
 func (f *fakeLL) Add(_ context.Context, id, source string) error {
 	f.added = append(f.added, id+"@"+source)
-	if f.renumber {
+	if f.renumber && source == sourceHardcover {
 		id = "other-" + id
 	}
 	f.statuses[id] = "Skipped"
@@ -196,5 +197,57 @@ func TestForeignEditionIsSkipped(t *testing.T) {
 	New(fakeWorks{}, ll, s, true, false).Want(context.Background(), "me", library(b), nil)
 	if len(ll.added) != 0 {
 		t.Fatalf("added %v", ll.added)
+	}
+}
+
+func TestOpenLibraryIsTheFallback(t *testing.T) {
+	s := setup(t)
+	ll := &fakeLL{statuses: map[string]string{}, renumber: true} // the Hardcover add never lands
+	works := fakeWorks{search: []Work{{ID: "OL1W", Title: "All Systems Red", Authors: []string{"Martha Wells"}}}}
+	d := New(works, ll, s, true, false)
+	d.Want(context.Background(), "me", library(red), nil)
+	if strings.Join(ll.added, ",") != "427971@HardCover,427971@HardCover,OL1W@" || strings.Join(ll.queued, ",") != "OL1W" {
+		t.Fatalf("added %v, queued %v", ll.added, ll.queued)
+	}
+	if r, _, _ := s.Request(context.Background(), red.ID); r.State != stateQueued || r.WorkID != "OL1W" {
+		t.Fatalf("request = %+v", r)
+	}
+}
+
+type flakyWorks struct{ fakeWorks }
+
+func (f flakyWorks) Search(_ context.Context, title, _ string) ([]Work, error) {
+	if title == "All Systems Red" {
+		return nil, errors.New("openlibrary: status 500")
+	}
+	return f.fakeWorks.Search(context.Background(), title, "")
+}
+
+func TestOneFailureDoesntStopTheRest(t *testing.T) {
+	s := setup(t)
+	works := flakyWorks{fakeWorks{byISBN: map[string]Work{"9798217287161": {ID: "OL24593432W", Title: "Dungeon Crawler Carl", Authors: []string{"Matt Dinniman"}}}}}
+	ll := &fakeLL{statuses: map[string]string{}}
+	err := New(works, ll, s, false, false).Want(context.Background(), "me", library(red, carl), nil)
+	if err == nil || strings.Join(ll.queued, ",") != "OL24593432W" {
+		t.Fatalf("err %v, queued %v", err, ll.queued)
+	}
+	if _, ok, _ := s.Request(context.Background(), red.ID); ok {
+		t.Error("the failed book was saved, so it won't be retried")
+	}
+}
+
+func TestWipedLazyLibrarianIsAskedAgain(t *testing.T) {
+	s := setup(t)
+	ll := &fakeLL{statuses: map[string]string{}}
+	d := New(fakeWorks{}, ll, s, true, false)
+	d.Want(context.Background(), "me", library(red), nil)
+	ll.statuses = map[string]string{} // LazyLibrarian wiped
+	d.Want(context.Background(), "me", library(red), nil)
+	if strings.Join(ll.queued, ",") != "427971,427971" {
+		t.Fatalf("queued %v", ll.queued)
+	}
+	d.Want(context.Background(), "me", library(red), nil)
+	if len(ll.queued) != 2 {
+		t.Fatalf("asked again while LazyLibrarian still has it: %v", ll.queued)
 	}
 }

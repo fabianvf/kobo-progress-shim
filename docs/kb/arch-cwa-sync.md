@@ -52,11 +52,14 @@ is everything on the device. A collection deleted on the Kobo is made again.
 Progress goes to CWA only for a copy the Kobo has never opened, with no bookmark
 location. After that the Kobo owns its place in the book.
 
-Want to Read downloads one book at a time, never an author, each book once, and
-never queues a book LazyLibrarian already has Open, Have, Wanted, Snatched or
-Processed. Only books the library doesn't hold, by the shim's own CWA matches, are
-considered, because LazyLibrarian's ids aren't reliable: it re-keyed Legion to the
-id embedded in its epub. An OpenLibrary work must agree on title and author.
+Want to Read downloads one book at a time, never an author, and never queues a
+book LazyLibrarian already has Open, Have, Wanted, Snatched or Processed. Only
+books the library doesn't hold, by the shim's own CWA matches, are considered, so
+what LazyLibrarian remembers can't cause a re-download, and its database can be
+wiped. A book asked for before is asked again only if LazyLibrarian no longer holds
+it. With LL_SOURCE=HardCover the Hardcover id is tried first, since LazyLibrarian's
+main source is then Hardcover too; OpenLibrary is the fallback, and its work must
+agree on title and author. One book's failure is logged and the rest go on.
 
 Setup is served at /setup/ on the library's public address. The tunnel sends that
 path to the setup port, so it's behind the same Access app, and the /kobo bypass
@@ -66,7 +69,8 @@ be reached without passing Access, so a bare email header proves nothing. Each
 email gets one account and can only see or change its own. Accounts made there
 are sealed with ACCOUNTS_KEY, which the store never holds, and can't claim a Kobo
 a configured account already has. The page shows the signed-in reader their own
-CWA login, for browsing on the web. Their CWA user has no password-change role,
+CWA login, for browsing on the web. The CWA username is kobo- and the part of the
+email before the @, with a number added if another email already has it. Their CWA user has no password-change role,
 because the shim needs that password to mark their shelves to sync.
 
 ## GOTCHA
@@ -109,8 +113,13 @@ CWA's new-user form answers 200 whether or not it worked, ignoring the redirect
 its handler returns (cps/admin.py:1671-1683), so the user is looked up afterwards.
 Its refusal is in the page's alert, which is safe to log.
 
-LazyLibrarian's addBook with source HardCover is assumed to keep the Hardcover id
-as its BookID. That's unverified, so the id is checked before queueing.
+LazyLibrarian's addBook with source HardCover keeps the Hardcover id as its BookID
+(seen 2026-11-03). For an author it doesn't have, the first call adds only the
+author and answers with an HTML page, and the second adds the book, so the add is
+tried twice and the id checked before queueing.
+
+OpenLibrary answered 500 once on 2026-11-03, which ended that run's downloads
+before one book's failure was made to skip only that book.
 
 The OPDS feed has no identifiers, so CWA books match on title and author only.
 

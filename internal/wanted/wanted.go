@@ -49,7 +49,7 @@ type Downloader struct {
 	ll        Library
 	books     *store.Store
 	dryRun    bool
-	hardcover bool // add by Hardcover id through LazyLibrarian's Hardcover source
+	hardcover bool // LazyLibrarian's Hardcover source first, by Hardcover id
 	now       func() time.Time
 }
 
@@ -74,10 +74,20 @@ func (d *Downloader) Want(ctx context.Context, user string, lib hardcover.Librar
 	if err != nil {
 		return err
 	}
+	// One book's failure, such as OpenLibrary answering 500, is logged and the
+	// rest go on. The book is tried again next run, since nothing was saved.
+	failed := 0
 	for _, id := range ids {
 		if err := d.request(ctx, user, lib.Books[id], statuses); err != nil {
-			return err
+			if ctx.Err() != nil {
+				return err
+			}
+			failed++
+			log.Printf("wanted %d %q: %v, will retry", id, lib.Books[id].Title, err)
 		}
+	}
+	if failed > 0 {
+		return fmt.Errorf("wanted: %d of %d books failed, will retry", failed, len(ids))
 	}
 	return nil
 }
@@ -95,7 +105,18 @@ func (d *Downloader) request(ctx context.Context, user string, book hardcover.Sh
 			}
 		}
 	}
-	if ok && !(r.State == stateNotFound && d.now().Sub(r.Updated) > retryAfter) && !(r.State == stateWould && !d.dryRun) {
+	unmatched := r.State == stateNotFound || r.State == stateReview
+	// A book LazyLibrarian no longer holds, because it was wiped or the book
+	// unqueued, is asked for again.
+	llID := r.LLID
+	if llID == "" {
+		llID = r.WorkID
+	}
+	gone := (r.State == stateQueued || r.State == stateHave) && llID != "" && !wantedIn(statuses[llID])
+	retry := gone || (r.State == stateNotFound && d.now().Sub(r.Updated) > retryAfter) ||
+		(r.State == stateWould && !d.dryRun) ||
+		(unmatched && d.hardcover && !r.TriedHardcover) // the fallback came after
+	if ok && !retry {
 		return nil
 	}
 	r.HardcoverID, r.Title = book.ID, book.Title
@@ -103,43 +124,79 @@ func (d *Downloader) request(ctx context.Context, user string, book hardcover.Sh
 		return d.save(ctx, user, r, stateForeign, "its ebook edition isn't in English")
 	}
 
-	id, source := strconv.Itoa(book.ID), sourceHardcover
-	if !d.hardcover {
-		work, state, detail, err := d.work(ctx, book)
-		if err != nil {
+	// With LazyLibrarian on its Hardcover source, the Hardcover id is the book id
+	// everywhere, so it's tried first. OpenLibrary is the way otherwise, and the
+	// fallback when LazyLibrarian won't add a book from Hardcover.
+	if d.hardcover {
+		r.TriedHardcover = true
+		queued, err := d.add(ctx, user, &r, strconv.Itoa(book.ID), sourceHardcover, statuses)
+		if err != nil || queued {
 			return err
 		}
-		if state != "" {
-			return d.save(ctx, user, r, state, detail)
-		}
-		id, source, r.WorkID = work.ID, "", work.ID
 	}
-	switch statuses[id] {
-	case "Open", "Have", "Wanted", "Snatched", "Processed":
-		return d.save(ctx, user, r, stateHave, "LazyLibrarian already has it "+statuses[id])
-	}
-	if d.dryRun {
-		return d.save(ctx, user, r, stateWould, "would add to LazyLibrarian as "+id)
-	}
-	if _, known := statuses[id]; !known {
-		if err := d.ll.Add(ctx, id, source); err != nil {
-			return err
-		}
-		// Unverified that a book from the Hardcover source keeps the Hardcover
-		// id as its BookID, so check before queueing something that isn't there.
-		after, err := d.ll.Statuses(ctx)
-		if err != nil {
-			return err
-		}
-		if _, added := after[id]; !added {
-			return d.save(ctx, user, r, stateReview, "LazyLibrarian added it under an id other than "+id)
-		}
-		statuses[id] = after[id]
-	}
-	if err := d.ll.Queue(ctx, id); err != nil {
+	work, state, detail, err := d.work(ctx, book)
+	if err != nil {
 		return err
 	}
-	return d.save(ctx, user, r, stateQueued, "wanted in LazyLibrarian as "+id)
+	if state != "" {
+		if d.hardcover { // neither way worked, so a person should look
+			state, detail = stateReview, "LazyLibrarian didn't add it from Hardcover, and OpenLibrary: "+detail
+		}
+		return d.save(ctx, user, r, state, detail)
+	}
+	r.WorkID = work.ID
+	queued, err := d.add(ctx, user, &r, work.ID, "", statuses)
+	if err != nil || queued {
+		return err
+	}
+	return d.save(ctx, user, r, stateReview, "LazyLibrarian didn't add it as "+work.ID)
+}
+
+// add queues id in LazyLibrarian, adding it first if LazyLibrarian doesn't have
+// it. It reports whether the request is settled, saved as have, would or queued.
+func (d *Downloader) add(ctx context.Context, user string, r *store.Request, id, source string, statuses map[string]string) (bool, error) {
+	if wantedIn(statuses[id]) {
+		r.LLID = id
+		return true, d.save(ctx, user, *r, stateHave, "LazyLibrarian already has it "+statuses[id])
+	}
+	if d.dryRun {
+		return true, d.save(ctx, user, *r, stateWould, "would add to LazyLibrarian as "+id)
+	}
+	if _, known := statuses[id]; !known {
+		// From the Hardcover source, LazyLibrarian's first add for a new author
+		// only adds the author, and a second adds the book (seen 2026-11-03), so
+		// it gets two tries. Its BookID is then the Hardcover id.
+		added := false
+		for attempt := 0; attempt < 2 && !added; attempt++ {
+			if err := d.ll.Add(ctx, id, source); err != nil {
+				return false, err
+			}
+			after, err := d.ll.Statuses(ctx)
+			if err != nil {
+				return false, err
+			}
+			if _, added = after[id]; added {
+				statuses[id] = after[id]
+			}
+		}
+		if !added {
+			return false, nil
+		}
+	}
+	if err := d.ll.Queue(ctx, id); err != nil {
+		return false, err
+	}
+	r.LLID = id
+	return true, d.save(ctx, user, *r, stateQueued, "wanted in LazyLibrarian as "+id)
+}
+
+// wantedIn reports whether a LazyLibrarian status means it has or will get it.
+func wantedIn(status string) bool {
+	switch status {
+	case "Open", "Have", "Wanted", "Snatched", "Processed":
+		return true
+	}
+	return false
 }
 
 // work finds the OpenLibrary work for a book: by an ISBN whose work agrees on

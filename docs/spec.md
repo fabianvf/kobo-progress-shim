@@ -119,9 +119,9 @@ Collections, downloads and setup:
   Hardcover holding everything on any of them. Only what the sync added is changed.
 - A book Hardcover has as being read gets Reading and its percent in CWA, only if
   the Kobo hasn't opened that copy.
-- Want to Read books the library lacks go to LazyLibrarian one at a time, through
-  OpenLibrary, or LazyLibrarian's Hardcover source with `LL_SOURCE=HardCover`.
-  Needs `LL_URL` and `LL_API_KEY`.
+- Want to Read books the library lacks go to LazyLibrarian one at a time, by
+  Hardcover id with `LL_SOURCE=HardCover`, else through OpenLibrary. Needs
+  `LL_URL` and `LL_API_KEY`. Nothing else asks LazyLibrarian for books.
 - A setup page on `SETUP_ADDR` at `SETUP_PATH` (default `/setup/`), behind Cloudflare Access, takes a Hardcover key,
   makes the CWA user with shelf-only sync, and shows the Kobo's `api_endpoint`.
   Needs `ACCOUNTS_KEY`, `ACCESS_TEAM`, `ACCESS_AUD` and `PUBLIC_URL`.

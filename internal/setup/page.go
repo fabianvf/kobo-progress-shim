@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -127,7 +128,7 @@ After the family sign-in, log in with:</p>
 
 <section class="card"><h2>If something goes wrong</h2>
 <details><summary>The Kobo says it can't sync</summary><p>Plug it back in and check the <code>api_endpoint=</code> line matches yours above exactly, with nothing else on the line.</p></details>
-<details><summary>It stopped working after a while</summary><p>Hardcover keys expire on the date you chose when making yours. Make a new one with the button below and paste it here.
+<details><summary>It stopped working after a while</summary><p>If you didn't choose <b>Never</b> when making your Hardcover key, it has expired. Make a new one with the link below and paste it here.
 If it stopped after a Kobo update or reset, check the <code>api_endpoint=</code> line is still there.</p></details>
 <details><summary>A book isn't showing up</summary><p>Make sure it's on one of your Hardcover shelves or lists, give it a day if the library had to fetch it, then sync. Still missing? Ask Fabian.</p></details>
 <details><summary>Undo everything</summary><p>Change the line back to <code>api_endpoint=https://storeapi.kobo.com</code> and sync. Your Kobo goes back to syncing with Kobo only,
@@ -143,7 +144,8 @@ and books from the library may disappear from it.</p></details>
 <li>Put a few books on your <b>Want to Read</b> shelf: <a href="https://hardcover.app/search">search for a book</a>, open it, and choose <b>Want to Read</b>.
 You can add more any time, and each one will come to your Kobo.</li>
 <li>Make a key for the library: <a class="button" href="` + newKeyURL + `" target="_blank" rel="noopener">Make a Hardcover key</a><br>
-Hardcover's form opens with the right permissions already ticked. Name it <b>Library</b>, pick the longest expiry, and press create. Copy the key it shows you, since it's only shown once.</li>
+Hardcover's form opens with the right permissions already ticked. Name it <b>Library</b> and change <b>Expiration</b> to <b>Never</b>,
+since the library stops syncing your reading when the key expires. Press <b>Create Key</b> and copy the key it shows you. It's only shown once.</li>
 <li>Paste it here and press Save. It's stored encrypted and only used for your own account.</li>
 </ol>
 {{end}}
@@ -214,8 +216,18 @@ func (p *Page) save(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		password, err := newPassword()
 		if err == nil {
-			a = accounts.Account{Email: email, CWAUser: cwaName(email), CWAPassword: password}
-			a.KoboToken, err = p.cwa.CreateUser(r.Context(), a.CWAUser, email, password)
+			a = accounts.Account{Email: email, CWAPassword: password}
+			// Two emails can share the part before the @, so a taken name gets a number.
+			for n := 1; n <= 5; n++ {
+				a.CWAUser = cwaName(email)
+				if n > 1 {
+					a.CWAUser = fmt.Sprintf("%s-%d", a.CWAUser, n)
+				}
+				a.KoboToken, err = p.cwa.CreateUser(r.Context(), a.CWAUser, email, password)
+				if err == nil || !strings.Contains(err.Error(), "username is already taken") {
+					break
+				}
+			}
 		}
 		if err != nil {
 			log.Printf("setup %s: %v", accounts.Key(email), err)

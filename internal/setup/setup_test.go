@@ -38,11 +38,17 @@ func (m memStore) PutSealedAccount(_ context.Context, email string, sealed []byt
 	return nil
 }
 
-type fakeCWA struct{ created []string }
+type fakeCWA struct {
+	created []string
+	taken   map[string]bool
+}
 
 func (f *fakeCWA) CreateUser(_ context.Context, name, email, password string) (string, error) {
 	if len(password) < 20 {
 		return "", errors.New("weak password")
+	}
+	if f.taken[name] {
+		return "", errors.New("cwa: creating user refused: This username is already taken")
 	}
 	f.created = append(f.created, name+"/"+email)
 	return "0123456789abcdef0123456789abcdef", nil
@@ -195,5 +201,14 @@ func TestAccessChecksTheToken(t *testing.T) {
 	}
 	if _, err := check(""); err == nil {
 		t.Error("no token accepted")
+	}
+}
+
+func TestTakenNameGetsANumber(t *testing.T) {
+	reg, cwa := registry(t), &fakeCWA{taken: map[string]bool{"kobo-brother": true}}
+	s := server(t, fixedIdentity("brother@work.example"), reg, cwa)
+	body(t, func() (*http.Response, error) { return http.PostForm(s.URL, url.Values{"hardcover_key": {"good-key"}}) })
+	if a, ok := reg.ByEmail("brother@work.example"); !ok || a.CWAUser != "kobo-brother-2" {
+		t.Fatalf("account = %+v, created %v", a, cwa.created)
 	}
 }
