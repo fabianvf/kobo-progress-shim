@@ -55,7 +55,7 @@ Sizes are estimates (4 chars/token). `->` is an outbound edge; `gated by` must b
 
 ## arch-matching
 
-`article` · ~2.2k tokens
+`article` · ~2.3k tokens
 
 - owns: cmd/backfill/**, cmd/match-eval/**, internal/activity/**, internal/dryrun/**, internal/hardcover/**, internal/kobostore/**, internal/match/**, internal/store/**
 - -> arch-capture, arch-cwa-sync, arch-kobo-traffic
@@ -63,7 +63,7 @@ Sizes are estimates (4 chars/token). `->` is an outbound edge; `gated by` must b
 - **INVARIANT**: An automatic match needs two signals that agree: an ISBN that finds one book whose title and author also match, or exactly one exact title and author...
 - **INVARIANT**: Search order is never trusted.
 - **INVARIANT**: KoboReader.sqlite is never an input to the live path.
-- **INVARIANT**: (+9 more, in the article)
+- **INVARIANT**: (+10 more, in the article)
 - **GOTCHA**: Hardcover's read input takes progress_pages or progress_seconds, not a percent, so progress needs an edition with a page count.
 - **GOTCHA**: Read dates are UTC, so a late evening's read can land on the next day.
 - **GOTCHA**: Marking a book read, by insert or status change, makes Hardcover add a read finished today plus an activity entry, even if the book already has a...

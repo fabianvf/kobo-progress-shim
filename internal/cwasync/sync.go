@@ -188,6 +188,9 @@ func (s *Syncer) identify(ctx context.Context, a Account, cb Book, requests []st
 		}
 		changed := !ok || b.Title != cb.Title || !slices.Equal(b.Authors, cb.Authors)
 		if changed || b.Outcome == "" {
+			// A decision is saved even with nothing else new, or a review is
+			// never queued and the book is searched again every run.
+			changed = true
 			if !ok {
 				b.RevisionID = cb.UUID // CWA's books use one id for both
 			}

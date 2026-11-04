@@ -197,6 +197,22 @@ func TestConfirmedMatchSurvivesSync(t *testing.T) {
 	}
 }
 
+func TestResentSyncKeepsAReview(t *testing.T) {
+	capturedLog(t)
+	s, _ := openStore(t)
+	ctx := context.Background()
+	if err := s.Put(ctx, store.Book{EntitlementID: "id", Title: "Stone and Sky", Authors: []string{"Ben Aaronovitch"}, Outcome: "review"}); err != nil {
+		t.Fatal(err)
+	}
+	w := New(found(), one(fakeLookup{}, nil), s, true)
+	w.SyncedBook(capture.SyncedBook{EntitlementID: "id", Title: "Stone and Sky", Authors: []string{"Ben Aaronovitch"}})
+	w.SyncedBook(capture.SyncedBook{EntitlementID: "other", Title: "x"})
+	w.Close()
+	if b := book(t, s, "id"); b.Outcome != "review" {
+		t.Fatalf("an unchanged resend cleared the review: %+v", b)
+	}
+}
+
 type fakeWriter struct {
 	wants []hardcover.Want
 	dry   []bool

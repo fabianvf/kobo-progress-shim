@@ -49,6 +49,11 @@ Kobo no account claims is saved but gets no Hardcover client. See arch-cwa-sync.
 The store also holds the CWA sync's state, its collections, Want to Read requests
 and setup accounts, sealed. Those are arch-cwa-sync's.
 
+A sync entry only clears an unresolved book's outcome when its title, authors or
+ISBN changed. The Kobo resends every book on a full sync, and clearing on each one
+kept three of Fabian's books out of the review queue on 2026-11-04, alongside the
+CWA sync not saving a decision when nothing else about the book changed.
+
 A match chosen by hand outlives later syncs. Only an unresolved book takes new
 metadata from sync, otherwise a sync would undo a correction.
 

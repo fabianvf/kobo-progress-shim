@@ -237,6 +237,17 @@ func TestDryRunCallsNothingThenLiveActs(t *testing.T) {
 	}
 }
 
+func TestAnUndecidedBookIsQueuedForReview(t *testing.T) {
+	s, lib, hc, _ := setup(t)
+	ctx := context.Background()
+	// Saved with no outcome and its title already known, as after a resync.
+	s.Put(ctx, store.Book{User: me, EntitlementID: "u-unknown", Title: "Untitled 6619", Authors: []string{"Penguin Random House"}})
+	syncer(lib, s, hc, false).Once(ctx)
+	if b, _, _ := s.Get(ctx, me, "u-unknown"); b.Outcome != string(match.Review) {
+		t.Fatalf("book = %+v", b)
+	}
+}
+
 func TestHandChosenMatchIsKept(t *testing.T) {
 	s, lib, hc, _ := setup(t)
 	ctx := context.Background()

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -196,12 +197,14 @@ func (w *Worker) handleSynced(ctx context.Context, s capture.SyncedBook) error {
 		return err
 	}
 	b.User, b.EntitlementID, b.RevisionID = s.User, s.EntitlementID, s.RevisionID
-	if !b.Resolved() {
+	// Only new signals mean deciding again. The Kobo resends every book on a
+	// full sync, and clearing a review then would empty the queue each time.
+	if !b.Resolved() && (b.Title != s.Title || !slices.Equal(b.Authors, s.Authors) || (s.ISBN != "" && s.ISBN != b.ISBN)) {
 		b.Title, b.Authors = s.Title, s.Authors
 		if s.ISBN != "" {
 			b.ISBN, b.ISBNFrom = s.ISBN, "sync"
 		}
-		b.Outcome = "" // more signals, so decide again on the next progress
+		b.Outcome = "" // decide again on the next progress
 	}
 	return w.books.Put(ctx, b)
 }
