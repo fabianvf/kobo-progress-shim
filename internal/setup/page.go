@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"html/template"
 	"log"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/fabianvf/kobo-progress-shim/internal/accounts"
+	"github.com/fabianvf/kobo-progress-shim/internal/hardcover"
 )
 
 // Identity says who's asking. Access is the real one.
@@ -87,8 +89,14 @@ Hardcover to pick books, and your Kobo to read them.</p>
 {{if .Error}}<p class="card error">{{.Error}}</p>{{end}}
 
 {{if .Endpoint}}
-<section class="card done"><h2><span class="num">✓</span>Hardcover is connected</h2>
-<p class="ok">Connected as {{.HardcoverUser}}.</p></section>
+{{if .KeyRejected}}<section class="card"><h2><span class="num">!</span>Your Hardcover key stopped working</h2>
+<p class="error">Hardcover isn't accepting your key any more, so your reading isn't syncing. It has probably expired.</p>
+{{if .Configured}}<p>Your account is configured on the server, so ask Fabian to replace it.</p>
+{{else}}<p><a class="button" href="` + newKeyURL + `" target="_blank" rel="noopener">Make a new Hardcover key</a></p>
+<p>Choose <b>Never</b> for <b>Expiration</b> this time, then paste the new key at the bottom of this page and press Save.</p>{{end}}
+</section>
+{{else}}<section class="card done"><h2><span class="num">✓</span>Hardcover is connected</h2>
+<p class="ok">Connected as {{.HardcoverUser}}.</p></section>{{end}}
 
 <section class="card"><h2><span class="num">2</span>Point your Kobo at the library</h2>
 <p>A one-time change to one line in a settings file on your Kobo. It takes about five minutes, and you can undo it any time.</p>
@@ -157,6 +165,7 @@ since the library stops syncing your reading when the key expires. Press <b>Crea
 
 type pageData struct {
 	Configured                                  bool // set up by Fabian, not through this page
+	KeyRejected                                 bool // Hardcover refuses the saved key
 	Email, Error, Endpoint, HardcoverUser, Seen string
 	LibraryURL, CWAUser, CWAPassword            string
 }
@@ -194,6 +203,10 @@ func (p *Page) render(w http.ResponseWriter, r *http.Request, email, problem str
 		data.LibraryURL, data.CWAUser, data.CWAPassword = p.publicURL+"/", a.CWAUser, a.CWAPassword
 		if when, err := p.seen(r.Context(), a.Key()); err == nil && !when.IsZero() {
 			data.Seen = when.UTC().Format("2006-01-02 15:04 UTC")
+		}
+		// Only a refusal counts. Hardcover being down isn't the reader's to fix.
+		if _, err := p.hardcover(r.Context(), a.HardcoverToken); errors.Is(err, hardcover.ErrRejected) {
+			data.KeyRejected = true
 		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

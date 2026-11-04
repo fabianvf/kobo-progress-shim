@@ -153,6 +153,7 @@
     "internal/cwasync/sync_test.go",
     "internal/dryrun/worker_test.go",
     "internal/hardcover/writes_test.go",
+    "internal/setup/setup_test.go",
     "internal/wanted/wanted_test.go"
    ]
   },
@@ -165,6 +166,7 @@
     "internal/cwasync/sync_test.go",
     "internal/dryrun/worker_test.go",
     "internal/hardcover/writes_test.go",
+    "internal/setup/setup_test.go",
     "internal/wanted/wanted_test.go"
    ]
   },
@@ -177,6 +179,7 @@
     "internal/cwasync/sync_test.go",
     "internal/dryrun/worker_test.go",
     "internal/hardcover/writes_test.go",
+    "internal/setup/setup_test.go",
     "internal/wanted/wanted_test.go"
    ]
   },

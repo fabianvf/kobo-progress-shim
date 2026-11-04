@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +16,11 @@ import (
 )
 
 const endpoint = "https://api.hardcover.app/v1/graphql"
+
+// ErrRejected means Hardcover refused the key, answering 401 with "Invalid or
+// expired token". Its API doesn't say when a key will expire, so this is the
+// only way to know.
+var ErrRejected = errors.New("hardcover: key rejected, invalid or expired")
 
 // Hardcover documents a limit of 60 requests a minute.
 const minInterval = 1100 * time.Millisecond
@@ -64,6 +70,9 @@ func (c *Client) query(ctx context.Context, query string, vars map[string]any, o
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		return err
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		return ErrRejected
 	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("hardcover: status %d", resp.StatusCode)

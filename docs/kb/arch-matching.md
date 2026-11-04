@@ -102,6 +102,10 @@ Hardcover answered 429 after about 15 requests in a short burst from separate
 processes, sooner than the 60 a minute we assumed. The client's spacing should avoid
 that, unconfirmed. A 429 is treated as a failed write and retried in 5 minutes.
 
+A key Hardcover refuses gets 401 and "Invalid or expired token", which the client
+returns as ErrRejected. Personal keys can expire, and the API has no way to ask
+when, so the setup page checks the reader's key on each visit and says so.
+
 The od_ prefix in ExternalIds doesn't mean a book came from Libby. Store books
 have them too, and some Libby books don't.
 

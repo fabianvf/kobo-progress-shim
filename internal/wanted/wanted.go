@@ -30,6 +30,10 @@ const (
 
 const retryAfter = 7 * 24 * time.Hour
 
+// maxFailures is how many runs in a row a book may fail before it's saved as
+// not found, and so tried weekly instead of hourly.
+const maxFailures = 3
+
 // sourceHardcover is LazyLibrarian's name for its Hardcover book source.
 const sourceHardcover = "HardCover"
 
@@ -75,7 +79,7 @@ func (d *Downloader) Want(ctx context.Context, user string, lib hardcover.Librar
 		return err
 	}
 	// One book's failure, such as OpenLibrary answering 500, is logged and the
-	// rest go on. The book is tried again next run, since nothing was saved.
+	// rest go on. The book is tried again next run, up to maxFailures runs.
 	failed := 0
 	for _, id := range ids {
 		if err := d.request(ctx, user, lib.Books[id], statuses); err != nil {
@@ -84,6 +88,9 @@ func (d *Downloader) Want(ctx context.Context, user string, lib hardcover.Librar
 			}
 			failed++
 			log.Printf("wanted %d %q: %v, will retry", id, lib.Books[id].Title, err)
+			if err := d.failure(ctx, user, lib.Books[id], err); err != nil {
+				return err
+			}
 		}
 	}
 	if failed > 0 {
@@ -118,7 +125,8 @@ func (d *Downloader) request(ctx context.Context, user string, book hardcover.Sh
 		llID = r.WorkID
 	}
 	gone := (r.State == stateQueued || r.State == stateHave) && llID != "" && !wantedIn(statuses[llID])
-	retry := gone || (r.State == stateNotFound && d.now().Sub(r.Updated) > retryAfter) ||
+	retry := gone || r.State == "" || // it failed before it settled
+		(r.State == stateNotFound && d.now().Sub(r.Updated) > retryAfter) ||
 		(r.State == stateWould && !d.dryRun) ||
 		(unmatched && d.hardcover && !r.TriedHardcover) // the fallback came after
 	if ok && !retry {
@@ -244,8 +252,25 @@ func (d *Downloader) work(ctx context.Context, book hardcover.ShelfBook) (Work, 
 	return Work{}, stateNotFound, "not on OpenLibrary", nil
 }
 
+// failure counts a run that failed for book. After maxFailures in a row it's
+// saved as not found, which shows on the activity page and is tried weekly.
+func (d *Downloader) failure(ctx context.Context, user string, book hardcover.ShelfBook, cause error) error {
+	r, _, err := d.books.Request(ctx, book.ID)
+	if err != nil {
+		return err
+	}
+	r.HardcoverID, r.Title, r.Authors = book.ID, book.Title, book.Authors
+	if !slices.Contains(r.Users, user) {
+		r.Users = append(r.Users, user)
+	}
+	if r.Failures++; r.Failures < maxFailures {
+		return d.books.PutRequest(ctx, r)
+	}
+	return d.save(ctx, user, r, stateNotFound, fmt.Sprintf("failed %d runs in a row, trying again in a week: %v", r.Failures, cause))
+}
+
 func (d *Downloader) save(ctx context.Context, user string, r store.Request, state, detail string) error {
-	r.State, r.Detail, r.Updated = state, detail, d.now()
+	r.State, r.Detail, r.Updated, r.Failures = state, detail, d.now(), 0
 	if err := d.books.PutRequest(ctx, r); err != nil {
 		return err
 	}

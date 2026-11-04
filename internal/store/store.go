@@ -290,9 +290,12 @@ type Request struct {
 	// TriedHardcover is set once LazyLibrarian's Hardcover source was tried,
 	// so a book it couldn't add isn't tried that way again.
 	TriedHardcover bool
-	State          string
-	Detail         string
-	Updated        time.Time
+	// Failures counts runs in a row that ended in an error, such as OpenLibrary
+	// answering 500, so a book that always fails stops being tried every hour.
+	Failures int
+	State    string
+	Detail   string
+	Updated  time.Time
 }
 
 func (s *Store) Request(ctx context.Context, hardcoverID int) (Request, bool, error) {

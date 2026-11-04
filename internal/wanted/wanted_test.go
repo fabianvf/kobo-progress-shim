@@ -231,8 +231,34 @@ func TestOneFailureDoesntStopTheRest(t *testing.T) {
 	if err == nil || strings.Join(ll.queued, ",") != "OL24593432W" {
 		t.Fatalf("err %v, queued %v", err, ll.queued)
 	}
-	if _, ok, _ := s.Request(context.Background(), red.ID); ok {
-		t.Error("the failed book was saved, so it won't be retried")
+	if r, _, _ := s.Request(context.Background(), red.ID); r.State != "" || r.Failures != 1 {
+		t.Errorf("the failed book was settled, so it won't be retried: %+v", r)
+	}
+}
+
+func TestABookThatKeepsFailingIsTriedWeekly(t *testing.T) {
+	s := setup(t)
+	ll := &fakeLL{statuses: map[string]string{}}
+	d := New(flakyWorks{}, ll, s, false, false)
+	now := time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC)
+	d.now = func() time.Time { return now }
+	for range maxFailures {
+		if err := d.Want(context.Background(), "me", library(red), nil); err == nil {
+			t.Fatal("no error")
+		}
+	}
+	r, _, _ := s.Request(context.Background(), red.ID)
+	if r.State != stateNotFound || r.Failures != 0 || !strings.Contains(r.Detail, "status 500") {
+		t.Fatalf("request = %+v", r)
+	}
+	if err := d.Want(context.Background(), "me", library(red), nil); err != nil {
+		t.Fatalf("tried again within the week: %v", err)
+	}
+	d.works = fakeWorks{search: []Work{{ID: "OL1W", Title: "All Systems Red", Authors: []string{"Martha Wells"}}}}
+	now = now.Add(8 * 24 * time.Hour)
+	d.Want(context.Background(), "me", library(red), nil)
+	if strings.Join(ll.queued, ",") != "OL1W" {
+		t.Fatalf("queued %v", ll.queued)
 	}
 }
 

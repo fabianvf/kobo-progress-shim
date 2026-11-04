@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/fabianvf/kobo-progress-shim/internal/accounts"
+	"github.com/fabianvf/kobo-progress-shim/internal/hardcover"
 )
 
 type fixedIdentity string
@@ -71,10 +72,13 @@ type prefixed struct {
 
 func server(t *testing.T, id Identity, reg *accounts.Registry, cwa CWA) *prefixed {
 	hc := func(_ context.Context, token string) (string, error) {
-		if token != "good-key" {
-			return "", errors.New("401")
+		switch token {
+		case "good-key":
+			return "brother", nil
+		case "expired-key":
+			return "", hardcover.ErrRejected
 		}
-		return "brother", nil
+		return "", errors.New("hardcover: status 502")
 	}
 	seen := func(context.Context, string) (time.Time, error) { return time.Time{}, nil }
 	mux := http.NewServeMux()
@@ -120,6 +124,24 @@ func TestJoiningMakesOneAccount(t *testing.T) {
 	a, _, ok := reg.ByEmail("Brother@Example.com")
 	if !ok || a.HardcoverToken != "good-key" || a.CWAPassword == "" {
 		t.Fatalf("account = %+v", a)
+	}
+}
+
+func TestARefusedKeyIsShown(t *testing.T) {
+	raw := make([]byte, 32)
+	rand.Read(raw)
+	reg, err := accounts.NewRegistry(context.Background(), []accounts.Account{{Name: "old", KoboToken: "f", HardcoverToken: "expired-key", Email: "old@example.com"}}, memStore{}, base64.StdEncoding.EncodeToString(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := server(t, fixedIdentity("old@example.com"), reg, &fakeCWA{})
+	if page := body(t, func() (*http.Response, error) { return http.Get(s.URL) }); !strings.Contains(page, "key stopped working") || strings.Contains(page, "Hardcover is connected") {
+		t.Fatalf("page = %s", page)
+	}
+	// Hardcover being down isn't a refusal. The configured account's key "h" gets a 502.
+	s = server(t, fixedIdentity("fabian@example.com"), registry(t), &fakeCWA{})
+	if page := body(t, func() (*http.Response, error) { return http.Get(s.URL) }); strings.Contains(page, "key stopped working") {
+		t.Fatalf("page = %s", page)
 	}
 }
 

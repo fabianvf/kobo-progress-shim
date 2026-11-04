@@ -65,7 +65,10 @@ what LazyLibrarian remembers can't cause a re-download, and its database can be
 wiped. A book asked for before is asked again only if LazyLibrarian no longer holds
 it. With LL_SOURCE=HardCover the Hardcover id is tried first, since LazyLibrarian's
 main source is then Hardcover too; OpenLibrary is the fallback, and its work must
-agree on title and author. One book's failure is logged and the rest go on.
+agree on title and author. One book's failure is logged and the rest go on. A book
+that fails three runs in a row is saved as not found, so it's tried weekly rather
+than hourly; Green-Eyed Vipers and Hope's End hit an OpenLibrary 500 every run for
+a day before that.
 
 Setup is served at /setup/ on the library's public address. The tunnel sends that
 path to the setup port, so it's behind the same Access app, and the /kobo bypass
@@ -77,7 +80,8 @@ with an email (ACCOUNT_EMAIL, or email in ACCOUNTS_FILE) is shown on the page bu
 not changed there, and setup won't make that email a second account. Accounts made there
 are sealed with ACCOUNTS_KEY, which the store never holds, and can't claim a Kobo
 a configured account already has. The page shows the signed-in reader their own
-CWA login, for browsing on the web. The CWA username is the reader's Hardcover
+CWA login, for browsing on the web, and warns when Hardcover refuses their saved
+key, which is how an expired key shows. Hardcover being down isn't shown. The CWA username is the reader's Hardcover
 username, with a number added if CWA already has that name. Their CWA user has no password-change role,
 because the shim needs that password to mark their shelves to sync.
 
