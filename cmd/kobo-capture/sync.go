@@ -97,9 +97,13 @@ func startSync(upstream *url.URL, books *store.Store, registry *accounts.Registr
 		return out
 	}
 	log.Printf("cwa sync every %s", interval)
-	go cwasync.New(cwasync.NewCWA(base, robot, password), shelves{base}, downloads, books, synced, dryRun).Run(context.Background(), 2*time.Minute, interval)
-
 	team, aud, public := os.Getenv("ACCESS_TEAM"), os.Getenv("ACCESS_AUD"), os.Getenv("PUBLIC_URL")
+	setupURL := ""
+	if public != "" {
+		setupURL = strings.TrimSuffix(public, "/") + "/" + strings.Trim(env("SETUP_PATH", "/setup/"), "/")
+	}
+	go cwasync.New(cwasync.NewCWA(base, robot, password), shelves{base}, downloads, books, synced, dryRun).WithSetup(setupURL).Run(context.Background(), 2*time.Minute, interval)
+
 	if !registry.SetupEnabled() || team == "" || aud == "" || public == "" {
 		log.Print("setup page off: needs ACCOUNTS_KEY, ACCESS_TEAM, ACCESS_AUD and PUBLIC_URL")
 		return

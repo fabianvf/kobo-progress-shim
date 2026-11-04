@@ -55,6 +55,14 @@ is everything on the device. A collection deleted on the Kobo is made again: eac
 run renames every collection to its own name, the only way to ask CWA whether a
 shelf still exists, and a gone one is recreated.
 
+When Hardcover refuses a reader's key, the run stops before anything else and
+gives their Kobo an empty collection named "Hardcover key expired, see <setup
+page>", the only way to tell them on the device, since the shim never fails or
+changes a Kobo sync. Their other collections are left alone, so a shelf-only Kobo
+keeps its books. With a working key the notice isn't desired any more and is
+removed like a deleted list. CWA sends an empty shelf as a tag with no items
+(cps/kobo.py:906-926).
+
 Progress goes to CWA only for a copy the Kobo has never opened, with no bookmark
 location. After that the Kobo owns its place in the book.
 

@@ -7,6 +7,7 @@ import (
 	"log"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fabianvf/kobo-progress-shim/internal/hardcover"
@@ -20,6 +21,33 @@ const keyAll = "all"
 
 // dryTag marks a collection dry run only described, so it's described once.
 const dryTag = "dry run"
+
+// keyNotice is the empty collection that tells a reader on their Kobo that
+// Hardcover refused their key. Nothing else the Kobo shows can carry a message,
+// and the shim never changes the Kobo's traffic to fail a sync instead.
+const keyNotice = "notice:key"
+
+// notice keeps the key notice on the reader's Kobo. The other collections are
+// left as they are, since without Hardcover there's nothing to follow. Once the
+// key works, the notice is no longer desired and collections removes it.
+func (s *Syncer) notice(ctx context.Context, a Account) error {
+	have, err := s.books.Collections(ctx, a.Key)
+	if err != nil {
+		return err
+	}
+	var c store.Collection
+	ok := false
+	for _, saved := range have {
+		if saved.Key == keyNotice {
+			c, ok = saved, true
+		}
+	}
+	name := "Hardcover key expired"
+	if s.setupURL != "" {
+		name += ", see " + strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(s.setupURL, "https://"), "http://"), "/")
+	}
+	return s.keep(ctx, a, c, ok, wantCollection{key: keyNotice, name: name})
+}
 
 var statusCollections = []struct {
 	status int
@@ -111,7 +139,11 @@ func (s *Syncer) collections(ctx context.Context, a Account, lib hardcover.Libra
 		if err := s.books.DeleteCollection(ctx, a.Key, gone.Key); err != nil {
 			return err
 		}
-		s.note(ctx, a, "collection "+gone.Name+" removed, gone from Hardcover")
+		if gone.Key == keyNotice {
+			s.note(ctx, a, "collection "+gone.Name+" removed, Hardcover accepts the key again")
+		} else {
+			s.note(ctx, a, "collection "+gone.Name+" removed, gone from Hardcover")
+		}
 	}
 	return nil
 }

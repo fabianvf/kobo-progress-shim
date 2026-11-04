@@ -103,6 +103,7 @@ type fakeHardcover struct {
 	statuses map[int]int
 	progress map[int]float64
 	lists    []hardcover.List
+	rejected bool
 }
 
 func (f fakeHardcover) BooksByISBN(context.Context, string) ([]match.Book, error) { return nil, nil }
@@ -113,6 +114,9 @@ func (f fakeHardcover) Search(_ context.Context, title, _ string) ([]match.Book,
 	return nil, nil
 }
 func (f fakeHardcover) Library(context.Context) (hardcover.Library, error) {
+	if f.rejected {
+		return hardcover.Library{}, hardcover.ErrRejected
+	}
 	return hardcover.Library{Status: f.statuses, Progress: f.progress, Lists: f.lists}, nil
 }
 
@@ -370,6 +374,37 @@ func TestRequestedImportIsSyncedWithoutReview(t *testing.T) {
 	}
 	if !slices.Contains(lib.sets, "u-import=Finished") {
 		t.Errorf("sets = %v", lib.sets)
+	}
+}
+
+func TestARefusedKeyPutsANoticeOnTheKobo(t *testing.T) {
+	s, lib, hc, _ := setup(t)
+	ctx := context.Background()
+	syncer(lib, s, hc, false).Once(ctx)
+	const notice = "Hardcover key expired, see library.example/setup"
+
+	hc.rejected = true
+	lib.sets, lib.calls = nil, nil
+	syncer(lib, s, hc, false).WithSetup("https://library.example/setup/").Once(ctx)
+	if _, ok := lib.tags["tag-"+notice]; !ok {
+		t.Fatalf("no notice: %v", lib.names)
+	}
+	if len(lib.sets) != 0 || lib.tags["tag-Hardcover"] == nil || slices.ContainsFunc(lib.calls, func(c string) bool { return strings.HasPrefix(c, "delete") }) {
+		t.Fatalf("changed more than the notice: sets %v, calls %v", lib.sets, lib.calls)
+	}
+
+	// Deleted on the Kobo while the key is still refused, it comes back.
+	delete(lib.tags, "tag-"+notice)
+	delete(lib.names, "tag-"+notice)
+	syncer(lib, s, hc, false).WithSetup("https://library.example/setup/").Once(ctx)
+	if _, ok := lib.tags["tag-"+notice]; !ok {
+		t.Fatal("notice not made again")
+	}
+
+	hc.rejected = false
+	syncer(lib, s, hc, false).Once(ctx)
+	if _, ok := lib.tags["tag-"+notice]; ok || lib.tags["tag-Hardcover"] == nil {
+		t.Fatalf("after a new key: %v", lib.names)
 	}
 }
 

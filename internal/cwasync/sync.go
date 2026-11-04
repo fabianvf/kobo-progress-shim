@@ -7,6 +7,7 @@ package cwasync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"regexp"
@@ -81,10 +82,18 @@ type Syncer struct {
 	accounts func() []Account
 	dryRun   bool
 	pause    time.Duration // between CWA calls, to stay out of the Kobo's way
+	setupURL string        // named in the notice when Hardcover refuses a key
 }
 
 func New(cwa Library, shelves Shelves, wanted Downloader, books *store.Store, accounts func() []Account, dryRun bool) *Syncer {
 	return &Syncer{cwa: cwa, shelves: shelves, wanted: wanted, books: books, accounts: accounts, dryRun: dryRun, pause: 200 * time.Millisecond}
+}
+
+// WithSetup names the setup page in the collection a reader gets when their
+// Hardcover key stops working.
+func (s *Syncer) WithSetup(url string) *Syncer {
+	s.setupURL = url
+	return s
 }
 
 // Run syncs after delay and then every interval until ctx ends.
@@ -119,6 +128,14 @@ func (s *Syncer) Once(ctx context.Context) {
 }
 
 func (s *Syncer) account(ctx context.Context, a Account) error {
+	// Hardcover first: with a refused key every lookup below would fail too, and
+	// the reader only finds out from the notice on their Kobo.
+	lib, err := a.Hardcover.Library(ctx)
+	if errors.Is(err, hardcover.ErrRejected) {
+		return errors.Join(err, s.notice(ctx, a))
+	} else if err != nil {
+		return err
+	}
 	library, err := s.cwa.Books(ctx)
 	if err != nil {
 		return err
@@ -136,10 +153,6 @@ func (s *Syncer) account(ctx context.Context, a Account) error {
 		if b.Resolved() {
 			resolved = append(resolved, b)
 		}
-	}
-	lib, err := a.Hardcover.Library(ctx)
-	if err != nil {
-		return err
 	}
 	have := map[int]bool{}
 	byHardcover := map[int][]string{}
