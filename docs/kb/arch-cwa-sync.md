@@ -101,7 +101,11 @@ read on Hardcover, and those it marked itself. Dry run reads nothing.
 A state request for a book CWA doesn't hold is redirected to Kobo's store. The
 client doesn't follow redirects, so a token never leaves for Kobo. A collection
 request for a tag CWA doesn't know is proxied to Kobo's store by CWA itself, which
-answers 403, so 403 and 404 both mean the collection is gone.
+answered 403, and on 2026-11-04, after a store outage, 401. So 401, 403 and 404
+all mean the collection is gone. A bad token also gets a 401 from CWA, but the
+sync's state calls use the token before the collections do, and would fail first.
+The first run after Fabian deleted his collections stopped on that 401 and remade
+nothing.
 
 Only a shelf's owner can mark it to sync to the Kobo, and the Kobo API creates
 shelves unmarked, so a shelf-only account's collections would never reach its

@@ -202,7 +202,9 @@ func (c *CWA) do(req *http.Request, op string) ([]byte, error) {
 
 // ErrGone means CWA doesn't know a collection any more, usually because someone
 // deleted it on their Kobo. CWA passes such requests on to Kobo's store, which
-// answers 403, so both that and a 404 count.
+// has answered 403 and 401, so those and a 404 count. A 401 from CWA itself, for
+// a bad token, would look the same, but the sync's state calls use the token
+// first and would have failed.
 var ErrGone = errors.New("cwa: collection gone")
 
 func tagItems(uuids []string) []map[string]string {
@@ -272,7 +274,8 @@ func (c *CWA) tagCall(ctx context.Context, method, token string, path []string, 
 		return nil, fmt.Errorf("cwa: %s: reading response", op)
 	}
 	switch {
-	case resp.StatusCode == http.StatusNotFound, resp.StatusCode == http.StatusForbidden, resp.StatusCode == http.StatusTemporaryRedirect:
+	case resp.StatusCode == http.StatusNotFound, resp.StatusCode == http.StatusForbidden,
+		resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusTemporaryRedirect:
 		return nil, ErrGone
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:
 		return nil, fmt.Errorf("cwa: %s: status %d", op, resp.StatusCode)

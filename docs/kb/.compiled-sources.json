@@ -11,7 +11,7 @@
   "internal/capture/recorder.go": "a9850af0e2b9940634bda67d2d98af169943fef5eef8a9f7c2c8a5102684974a",
   "internal/capture/redact.go": "ff6e5594d157a764d199cc321744662523c20b0b5cb93e796b3e632c62d8750c",
   "internal/cwasync/collections.go": "b6d193893d4f83ecd25e41339c7e85e363d8405402e2265133d0c08c9d80183a",
-  "internal/cwasync/cwa.go": "d6a2e02f31c6d5d16d4b4a96e134fab39bcd23cb9d38d37a71bec226dd2a8011",
+  "internal/cwasync/cwa.go": "8b506ed237cecc7df60cf35e93f887e11a264312e47463f8fd4c91e2e2a89039",
   "internal/cwasync/sync.go": "8c47b1a3034e4a300bb6f10dfc99141517e362f8cdb2643e39ab8868cde2d9d6",
   "internal/cwasync/web.go": "d63d29b68d46de373d9c034cf30c54998c650e603aace3444f4cc9f054139067",
   "internal/dryrun/worker.go": "d64702402278363251600e1e2777b1cd8d79432915d08c90cf7acc53dda3edea",

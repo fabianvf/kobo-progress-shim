@@ -3,6 +3,7 @@ package cwasync
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -75,6 +76,19 @@ func TestStateKeepsTheBookmark(t *testing.T) {
 	}
 	if _, ok := state["Statistics"]; !ok {
 		t.Error("CWA's handler needs a Statistics key")
+	}
+}
+
+func TestStoreAnswersMeanTheCollectionIsGone(t *testing.T) {
+	for _, code := range []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(code)
+		}))
+		base, _ := url.Parse(server.URL + "/")
+		if err := NewCWA(base, "", "").RenameTag(context.Background(), "tok", "id", "Read"); !errors.Is(err, ErrGone) {
+			t.Errorf("%d: err = %v", code, err)
+		}
+		server.Close()
 	}
 }
 
