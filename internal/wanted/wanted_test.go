@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -237,9 +238,17 @@ func TestOneFailureDoesntStopTheRest(t *testing.T) {
 }
 
 func TestABookThatKeepsFailingIsTriedWeekly(t *testing.T) {
+	for _, viaHardcover := range []bool{false, true} {
+		t.Run(strconv.FormatBool(viaHardcover), func(t *testing.T) { testTriedWeekly(t, viaHardcover) })
+	}
+}
+
+// With viaHardcover, LazyLibrarian refuses the Hardcover id, as it did for
+// Green-Eyed Vipers and Hope's End, which were then retried every run.
+func testTriedWeekly(t *testing.T, viaHardcover bool) {
 	s := setup(t)
-	ll := &fakeLL{statuses: map[string]string{}}
-	d := New(flakyWorks{}, ll, s, false, false)
+	ll := &fakeLL{statuses: map[string]string{}, renumber: true}
+	d := New(flakyWorks{}, ll, s, viaHardcover, false)
 	now := time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC)
 	d.now = func() time.Time { return now }
 	for range maxFailures {

@@ -260,6 +260,9 @@ func (d *Downloader) failure(ctx context.Context, user string, book hardcover.Sh
 		return err
 	}
 	r.HardcoverID, r.Title, r.Authors = book.ID, book.Title, book.Authors
+	// request tried it before failing, and without this the saved not found
+	// counts as untried and is retried every run instead of weekly.
+	r.TriedHardcover = r.TriedHardcover || d.hardcover
 	if !slices.Contains(r.Users, user) {
 		r.Users = append(r.Users, user)
 	}

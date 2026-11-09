@@ -75,8 +75,10 @@ it. With LL_SOURCE=HardCover the Hardcover id is tried first, since LazyLibraria
 main source is then Hardcover too; OpenLibrary is the fallback, and its work must
 agree on title and author. One book's failure is logged and the rest go on. A book
 that fails three runs in a row is saved as not found, so it's tried weekly rather
-than hourly; Green-Eyed Vipers and Hope's End hit an OpenLibrary 500 every run for
-a day before that.
+than hourly. The failure count reloads the request, so it has to keep
+TriedHardcover set, or the saved not found looks like the Hardcover id was never
+tried and is retried every run. Green-Eyed Vipers and Hope's End were, 2026-11-04
+to 11-09.
 
 Setup is served at /setup/ on the library's public address. The tunnel sends that
 path to the setup port, so it's behind the same Access app, and the /kobo bypass
@@ -155,8 +157,10 @@ LazyLibrarian's addBook with source HardCover keeps the Hardcover id as its Book
 author and answers with an HTML page, and the second adds the book, so the add is
 tried twice and the id checked before queueing.
 
-OpenLibrary answered 500 once on 2026-11-03, which ended that run's downloads
-before one book's failure was made to skip only that book.
+OpenLibrary answers 500 to a search with an empty author, which a Hardcover book
+with no author on record sent, so the author is left out then. Those two books
+have no author or ISBN on Hardcover, and LazyLibrarian didn't add them from their
+Hardcover ids either.
 
 The OPDS feed has no identifiers, so CWA books match on title and author only.
 

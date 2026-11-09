@@ -53,7 +53,11 @@ func (o *OpenLibrary) Search(ctx context.Context, title, author string) ([]Work,
 			AuthorName []string `json:"author_name"`
 		} `json:"docs"`
 	}
-	path := "/search.json?" + url.Values{"title": {title}, "author": {author}, "fields": {"key,title,author_name"}, "limit": {"5"}}.Encode()
+	query := url.Values{"title": {title}, "fields": {"key,title,author_name"}, "limit": {"5"}}
+	if author != "" { // an empty author gets a 500
+		query.Set("author", author)
+	}
+	path := "/search.json?" + query.Encode()
 	if _, err := o.get(ctx, path, &out); err != nil {
 		return nil, err
 	}
