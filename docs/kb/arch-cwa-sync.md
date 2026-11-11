@@ -63,6 +63,17 @@ keeps its books. With a working key the notice isn't desired any more and is
 removed like a deleted list. CWA sends an empty shelf as a tag with no items
 (cps/kobo.py:906-926).
 
+Next up is a reader's switch on the setup page, off by default, and it's the only
+thing in the shim that writes a shelf to Hardcover. When on, each run finds the
+next book in every series with a book read or being read, puts any that's on no
+shelf on Want to Read, and keeps a Next Up collection of them. The download is the
+ordinary Want to Read one, so nothing else had to learn about series. Each book is
+added once, by the next_up_added table, so one the reader takes off Want to Read
+isn't put back an hour later. Turning it off removes the collection and leaves Want
+to Read alone. The switch is in the store, not the account, because a configured
+account can't be changed from setup but should still be able to turn it on. Dry run
+logs what it would add and writes nothing.
+
 Progress goes to CWA only for a copy the Kobo has never opened, with no bookmark
 location. After that the Kobo owns its place in the book.
 
@@ -162,6 +173,16 @@ with no author on record sent, so the author is left out then. Those two books
 have no author or ISBN on Hardcover, and LazyLibrarian didn't add them from their
 Hardcover ids either.
 
+Hardcover's series lists are noisy. One position can hold translations, omnibuses,
+merged duplicates, splits like "Elantris (2 of 2)" and books not out yet, and
+novellas sit at fractional positions. So the next book is the first whole-number
+position past the furthest one read, compilations, merged books and splits are
+dropped, a translation into a language the reader hasn't read the series in is
+skipped (the Iron Druid's #9 is a German-only book), and the most-read edition at
+that place wins. A next book with no release date or one in the future ends the
+series rather than skipping ahead. One whose book is paused or did not finish ends
+it too. A book in several series, like the Cosmere's, is counted once.
+
 The OPDS feed has no identifiers, so CWA books match on title and author only.
 
 The library list uses the claude-robot CWA account over OPDS basic auth. It can't
@@ -183,6 +204,11 @@ add nothing against the one remaining risk, a stolen Access session.
 All of a user's Want to Read is downloaded with no approval, 2026-11-03, Fabian's
 call: ebooks are small and storage isn't a concern.
 
+Next up marks Want to Read rather than keeping its own Hardcover list, 2026-11-11,
+Fabian's call. A list would need the write:lists scope and so a new key for
+everyone, and the Want to Read route gets the download for free. A Kobo collection
+is the only place the next-up set itself is kept.
+
 ## VERIFY
 
     go test -race ./internal/accounts/ ./internal/cwasync/ ./internal/setup/ ./internal/wanted/
@@ -192,8 +218,12 @@ on throwaway CWA users created a collection, added, renamed, removed and deleted
 it, and made a user, their Kobo token, a synced shelf and a collection in it, then
 deleted the user.
 
-Not yet seen live: the Kobo applying a Finished or a collection on its next sync,
-whether it reports a Finished back, whether a Kobo deletes a downloaded book when
+A read-only run of the next-up selection on Fabian's Hardcover, 2026-11-11, found
+36 series and 24 next books, 13 already on Want to Read, all plausible once splits
+were dropped. Nothing was written.
+
+Not yet seen live: next up adding to Want to Read, the Kobo applying a Finished or
+a collection on its next sync, whether it reports a Finished back, whether a Kobo deletes a downloaded book when
 it leaves every synced collection, and LazyLibrarian's Hardcover source.
 
 ## SEE ALSO

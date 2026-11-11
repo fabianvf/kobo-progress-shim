@@ -39,6 +39,14 @@ func (m memStore) PutSealedAccount(_ context.Context, email string, sealed []byt
 	return nil
 }
 
+type nextUps map[string]bool
+
+func (n nextUps) NextUp(_ context.Context, user string) (bool, error) { return n[user], nil }
+func (n nextUps) SetNextUp(_ context.Context, user string, on bool) error {
+	n[user] = on
+	return nil
+}
+
 type fakeCWA struct {
 	created []string
 	taken   map[string]bool
@@ -82,7 +90,7 @@ func server(t *testing.T, id Identity, reg *accounts.Registry, cwa CWA) *prefixe
 	}
 	seen := func(context.Context, string) (time.Time, error) { return time.Time{}, nil }
 	mux := http.NewServeMux()
-	New(id, reg, hc, cwa, seen, "https://library.example").Register(mux, "/setup")
+	New(id, reg, hc, cwa, seen, nextUps{}, "https://library.example").Register(mux, "/setup")
 	s := httptest.NewServer(mux)
 	t.Cleanup(s.Close)
 	return &prefixed{s, s.URL + "/setup/"}
@@ -245,5 +253,25 @@ func TestConfiguredAccountIsShownNotDuplicated(t *testing.T) {
 	body(t, func() (*http.Response, error) { return http.PostForm(s.URL, url.Values{"hardcover_key": {"good-key"}}) })
 	if len(cwa.created) != 0 || len(reg.All()) != 1 {
 		t.Fatalf("created %v, accounts %d", cwa.created, len(reg.All()))
+	}
+}
+
+func TestNextUpSwitch(t *testing.T) {
+	reg := registry(t)
+	s := server(t, fixedIdentity("fabian@example.com"), reg, &fakeCWA{})
+	if page := body(t, func() (*http.Response, error) { return http.Get(s.URL) }); !strings.Contains(page, "Keep track of the next book") || strings.Contains(page, `value="1" checked`) {
+		t.Fatalf("page = %s", page)
+	}
+	// A configured account can turn it on, since it's kept apart from the account.
+	if page := body(t, func() (*http.Response, error) { return http.PostForm(s.URL+"next-up", url.Values{"on": {"1"}}) }); !strings.Contains(page, `value="1" checked`) {
+		t.Fatalf("not on: %s", page)
+	}
+	if page := body(t, func() (*http.Response, error) { return http.PostForm(s.URL+"next-up", url.Values{}) }); strings.Contains(page, `value="1" checked`) {
+		t.Fatalf("not off: %s", page)
+	}
+	// Someone with no account can't turn it on for anyone.
+	s = server(t, fixedIdentity("stranger@example.com"), reg, &fakeCWA{})
+	if page := body(t, func() (*http.Response, error) { return http.PostForm(s.URL+"next-up", url.Values{"on": {"1"}}) }); !strings.Contains(page, "Connect Hardcover first") {
+		t.Fatalf("page = %s", page)
 	}
 }

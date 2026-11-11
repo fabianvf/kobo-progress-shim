@@ -104,6 +104,7 @@
    ],
    "tests": [
     "internal/cwasync/cwa_test.go",
+    "internal/cwasync/nextup_test.go",
     "internal/cwasync/sync_test.go"
    ]
   },
@@ -113,6 +114,17 @@
    ],
    "tests": [
     "internal/cwasync/cwa_test.go",
+    "internal/cwasync/nextup_test.go",
+    "internal/cwasync/sync_test.go"
+   ]
+  },
+  "internal/cwasync/nextup.go": {
+   "articles": [
+    "arch-cwa-sync"
+   ],
+   "tests": [
+    "internal/cwasync/cwa_test.go",
+    "internal/cwasync/nextup_test.go",
     "internal/cwasync/sync_test.go"
    ]
   },
@@ -122,6 +134,7 @@
    ],
    "tests": [
     "internal/cwasync/cwa_test.go",
+    "internal/cwasync/nextup_test.go",
     "internal/cwasync/sync_test.go"
    ]
   },
@@ -131,6 +144,7 @@
    ],
    "tests": [
     "internal/cwasync/cwa_test.go",
+    "internal/cwasync/nextup_test.go",
     "internal/cwasync/sync_test.go"
    ]
   },
@@ -140,6 +154,7 @@
    ],
    "tests": [
     "internal/cwasync/cwa_test.go",
+    "internal/cwasync/nextup_test.go",
     "internal/cwasync/sync_test.go",
     "internal/dryrun/worker_test.go"
    ]
@@ -150,6 +165,7 @@
    ],
    "tests": [
     "internal/cwasync/cwa_test.go",
+    "internal/cwasync/nextup_test.go",
     "internal/cwasync/sync_test.go",
     "internal/dryrun/worker_test.go",
     "internal/hardcover/writes_test.go",
@@ -164,6 +180,22 @@
    ],
    "tests": [
     "internal/cwasync/cwa_test.go",
+    "internal/cwasync/nextup_test.go",
+    "internal/cwasync/sync_test.go",
+    "internal/dryrun/worker_test.go",
+    "internal/hardcover/writes_test.go",
+    "internal/setup/setup_test.go",
+    "internal/wanted/clients_test.go",
+    "internal/wanted/wanted_test.go"
+   ]
+  },
+  "internal/hardcover/series.go": {
+   "articles": [
+    "arch-matching"
+   ],
+   "tests": [
+    "internal/cwasync/cwa_test.go",
+    "internal/cwasync/nextup_test.go",
     "internal/cwasync/sync_test.go",
     "internal/dryrun/worker_test.go",
     "internal/hardcover/writes_test.go",
@@ -178,6 +210,7 @@
    ],
    "tests": [
     "internal/cwasync/cwa_test.go",
+    "internal/cwasync/nextup_test.go",
     "internal/cwasync/sync_test.go",
     "internal/dryrun/worker_test.go",
     "internal/hardcover/writes_test.go",
@@ -201,6 +234,7 @@
    ],
    "tests": [
     "internal/cwasync/cwa_test.go",
+    "internal/cwasync/nextup_test.go",
     "internal/cwasync/sync_test.go",
     "internal/dryrun/worker_test.go",
     "internal/hardcover/writes_test.go",
@@ -232,6 +266,7 @@
    "tests": [
     "internal/activity/page_test.go",
     "internal/cwasync/cwa_test.go",
+    "internal/cwasync/nextup_test.go",
     "internal/cwasync/sync_test.go",
     "internal/dryrun/worker_test.go",
     "internal/store/store_test.go",

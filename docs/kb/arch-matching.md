@@ -46,8 +46,9 @@ print that struct whole or save it. store.Book has no auth field.
 Books are saved per user, keyed by accounts.Key and entitlement id. A book whose
 Kobo no account claims is saved but gets no Hardcover client. See arch-cwa-sync.
 
-The store also holds the CWA sync's state, its collections, Want to Read requests
-and setup accounts, sealed. Those are arch-cwa-sync's.
+The store also holds the CWA sync's state, its collections, Want to Read requests,
+setup accounts, sealed, and the next-up switch with the books it added. Those are
+arch-cwa-sync's, as is hardcover.Series and WantToRead, which only next up uses.
 
 A sync entry only clears an unresolved book's outcome when its title, authors or
 ISBN changed. The Kobo resends every book on a full sync, and clearing on each one

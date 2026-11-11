@@ -110,7 +110,7 @@ func startSync(upstream *url.URL, books *store.Store, registry *accounts.Registr
 	}
 	username := func(ctx context.Context, token string) (string, error) { return hardcover.New(token).Username(ctx) }
 	mux := http.NewServeMux()
-	setup.New(setup.NewAccess(team, aud), registry, username, robotAdmin{base, robot, password}, books.LastEvent, public).Register(mux, env("SETUP_PATH", "/setup/"))
+	setup.New(setup.NewAccess(team, aud), registry, username, robotAdmin{base, robot, password}, books.LastEvent, books, public).Register(mux, env("SETUP_PATH", "/setup/"))
 	go func() { log.Print(http.ListenAndServe(env("SETUP_ADDR", ":8082"), mux)) }()
 	log.Print("setup page on")
 }

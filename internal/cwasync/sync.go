@@ -38,6 +38,8 @@ const (
 type Hardcover interface {
 	match.Lookup
 	Library(ctx context.Context) (hardcover.Library, error)
+	Series(ctx context.Context) ([]hardcover.Series, error)
+	WantToRead(ctx context.Context, bookID int) error
 }
 
 type Library interface {
@@ -136,6 +138,10 @@ func (s *Syncer) account(ctx context.Context, a Account) error {
 	} else if err != nil {
 		return err
 	}
+	next, nextOn, err := s.nextUp(ctx, a, &lib)
+	if err != nil {
+		return err
+	}
 	library, err := s.cwa.Books(ctx)
 	if err != nil {
 		return err
@@ -166,7 +172,7 @@ func (s *Syncer) account(ctx context.Context, a Account) error {
 			return err
 		}
 	}
-	if err := s.collections(ctx, a, lib, byHardcover); err != nil {
+	if err := s.collections(ctx, a, desired(lib, byHardcover, next, nextOn)); err != nil {
 		return err
 	}
 	if s.wanted != nil {

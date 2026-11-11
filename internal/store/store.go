@@ -90,6 +90,14 @@ CREATE TABLE IF NOT EXISTS cwa_state (
 	status TEXT NOT NULL,
 	marked INTEGER NOT NULL,
 	PRIMARY KEY (user, entitlement_id)
+);
+CREATE TABLE IF NOT EXISTS next_up_on (
+	user TEXT PRIMARY KEY
+);
+CREATE TABLE IF NOT EXISTS next_up_added (
+	user TEXT NOT NULL,
+	hardcover_id INTEGER NOT NULL,
+	PRIMARY KEY (user, hardcover_id)
 );`
 
 // Before accounts, books were keyed by entitlement id alone. Their rows move
@@ -386,6 +394,48 @@ func (s *Store) PutCollection(ctx context.Context, user string, c Collection) er
 
 func (s *Store) DeleteCollection(ctx context.Context, user, key string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM collections WHERE user = ? AND key = ?`, user, key)
+	return err
+}
+
+// NextUp reports whether a user asked for the next book in each series they're
+// reading. It's kept here rather than on the account so a configured account,
+// which setup can't change, can turn it on too.
+func (s *Store) NextUp(ctx context.Context, user string) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM next_up_on WHERE user = ?`, user).Scan(&n)
+	return n > 0, err
+}
+
+func (s *Store) SetNextUp(ctx context.Context, user string, on bool) error {
+	query := `DELETE FROM next_up_on WHERE user = ?`
+	if on {
+		query = `INSERT INTO next_up_on (user) VALUES (?) ON CONFLICT DO NOTHING`
+	}
+	_, err := s.db.ExecContext(ctx, query, user)
+	return err
+}
+
+// NextUpAdded returns the books the sync put on a user's Want to Read as next
+// in a series. Each is added once, so one the reader takes off stays off.
+func (s *Store) NextUpAdded(ctx context.Context, user string) (map[int]bool, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT hardcover_id FROM next_up_added WHERE user = ?`, user)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int]bool{}
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) AddNextUp(ctx context.Context, user string, hardcoverID int) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO next_up_added (user, hardcover_id) VALUES (?, ?) ON CONFLICT DO NOTHING`, user, hardcoverID)
 	return err
 }
 

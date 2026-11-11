@@ -103,7 +103,16 @@ type fakeHardcover struct {
 	statuses map[int]int
 	progress map[int]float64
 	lists    []hardcover.List
+	series   []hardcover.Series
+	wanted   *[]int
 	rejected bool
+}
+
+func (f fakeHardcover) Series(context.Context) ([]hardcover.Series, error) { return f.series, nil }
+func (f fakeHardcover) WantToRead(_ context.Context, id int) error {
+	*f.wanted = append(*f.wanted, id)
+	f.statuses[id] = hardcover.StatusWantToRead
+	return nil
 }
 
 func (f fakeHardcover) BooksByISBN(context.Context, string) ([]match.Book, error) { return nil, nil }
@@ -154,6 +163,7 @@ func setup(t *testing.T) (*store.Store, *fakeLibrary, fakeHardcover, *bytes.Buff
 			"Summer Knight": {ID: 3, Title: "Summer Knight", Authors: []string{"Jim Butcher"}},
 		},
 		statuses: map[int]int{1: 3, 2: 3, 3: 1},
+		wanted:   new([]int),
 	}
 	return s, lib, hc, &logged
 }

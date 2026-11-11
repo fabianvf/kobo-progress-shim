@@ -38,17 +38,25 @@ type CWA interface {
 // Seen reports when a user's Kobo last produced anything.
 type Seen func(ctx context.Context, user string) (time.Time, error)
 
+// NextUp is the reader's switch for keeping the next book in each series they're
+// reading on Want to Read and in a Next Up collection.
+type NextUp interface {
+	NextUp(ctx context.Context, user string) (bool, error)
+	SetNextUp(ctx context.Context, user string, on bool) error
+}
+
 type Page struct {
 	identity  Identity
 	registry  *accounts.Registry
 	hardcover Hardcover
 	cwa       CWA
 	seen      Seen
+	nextUp    NextUp
 	publicURL string // what the Kobo's api_endpoint starts with
 }
 
-func New(identity Identity, registry *accounts.Registry, hc Hardcover, cwa CWA, seen Seen, publicURL string) *Page {
-	return &Page{identity: identity, registry: registry, hardcover: hc, cwa: cwa, seen: seen, publicURL: strings.TrimSuffix(publicURL, "/")}
+func New(identity Identity, registry *accounts.Registry, hc Hardcover, cwa CWA, seen Seen, nextUp NextUp, publicURL string) *Page {
+	return &Page{identity: identity, registry: registry, hardcover: hc, cwa: cwa, seen: seen, nextUp: nextUp, publicURL: strings.TrimSuffix(publicURL, "/")}
 }
 
 // newKeyURL opens Hardcover's New API Key form with only the scopes the shim
@@ -116,6 +124,20 @@ If there's no <code>api_endpoint=</code> line, add yours on a new line just belo
 <p class="status">{{if .Seen}}✓ Your Kobo has synced with the library, most recently {{.Seen}}.{{else}}Your Kobo hasn't synced with the library yet. Reload this page after step 7 to check.{{end}}</p>
 </section>
 
+<section class="card"><h2>Next in your series</h2>
+<form method="post" action="next-up">
+<p><label><input type="checkbox" name="on" value="1"{{if .NextUp}} checked{{end}} onchange="this.form.submit()">
+<b>Keep track of the next book in each series I'm reading</b></label></p>
+<p class="muted">For every series where you've read or are reading a book, the library finds the next one that's out, and within the hour:</p>
+<ul class="muted">
+<li>marks it <b>Want to Read</b> on Hardcover if it isn't on one of your shelves yet, so it's fetched like any other book you want. Hardcover may show that on your profile's activity.</li>
+<li>keeps a <b>Next Up</b> collection on your Kobo with just those books.</li>
+</ul>
+<p class="muted">Each book is only added once, so if you take one off Want to Read it stays off. Series you paused or didn't finish are skipped.
+Turning this off removes the Next Up collection, and leaves your Want to Read as it is.</p>
+<noscript><p><button class="button">Save</button></p></noscript>
+</form></section>
+
 <section class="card"><h2>What happens next</h2>
 <ul>
 <li>Your Kobo gets a collection called <b>Hardcover</b> with every book on your Hardcover shelves and lists, plus one for each shelf and list,
@@ -166,6 +188,7 @@ since the library stops syncing your reading when the key expires. Press <b>Crea
 type pageData struct {
 	Configured                                  bool // set up by Fabian, not through this page
 	KeyRejected                                 bool // Hardcover refuses the saved key
+	NextUp                                      bool
 	Email, Error, Endpoint, HardcoverUser, Seen string
 	LibraryURL, CWAUser, CWAPassword            string
 }
@@ -180,6 +203,7 @@ func (p *Page) Register(mux *http.ServeMux, prefix string) {
 	same := http.NewCrossOriginProtection()
 	mux.HandleFunc("GET "+prefix+"{$}", p.show)
 	mux.Handle("POST "+prefix+"{$}", same.Handler(http.HandlerFunc(p.save)))
+	mux.Handle("POST "+prefix+"next-up", same.Handler(http.HandlerFunc(p.setNextUp)))
 	if prefix != "/" {
 		mux.Handle("GET "+strings.TrimSuffix(prefix, "/"), http.RedirectHandler(prefix, http.StatusMovedPermanently))
 	}
@@ -201,6 +225,9 @@ func (p *Page) render(w http.ResponseWriter, r *http.Request, email, problem str
 		data.Endpoint = p.publicURL + "/kobo/" + a.KoboToken
 		data.HardcoverUser = a.Name
 		data.LibraryURL, data.CWAUser, data.CWAPassword = p.publicURL+"/", a.CWAUser, a.CWAPassword
+		if on, err := p.nextUp.NextUp(r.Context(), a.Key()); err == nil {
+			data.NextUp = on
+		}
 		if when, err := p.seen(r.Context(), a.Key()); err == nil && !when.IsZero() {
 			data.Seen = when.UTC().Format("2006-01-02 15:04 UTC")
 		}
@@ -262,6 +289,28 @@ func (p *Page) save(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("setup: account %s saved for Hardcover user %s", a.Key(), user)
+	http.Redirect(w, r, "./", http.StatusSeeOther)
+}
+
+// setNextUp works for a configured account too, since it's kept in the store.
+func (p *Page) setNextUp(w http.ResponseWriter, r *http.Request) {
+	email, err := p.identity.Email(r)
+	if err != nil {
+		http.Error(w, "sign in through the library's address", http.StatusUnauthorized)
+		return
+	}
+	a, _, ok := p.registry.ByEmail(email)
+	if !ok {
+		p.render(w, r, email, "Connect Hardcover first.")
+		return
+	}
+	on := r.FormValue("on") != ""
+	if err := p.nextUp.SetNextUp(r.Context(), a.Key(), on); err != nil {
+		log.Printf("setup %s: %v", accounts.Key(email), err)
+		p.render(w, r, email, "Saving that failed. Ask Fabian to look at the shim's log.")
+		return
+	}
+	log.Printf("setup: account %s next up %v", a.Key(), on)
 	http.Redirect(w, r, "./", http.StatusSeeOther)
 }
 

@@ -65,10 +65,11 @@ type wantCollection struct {
 	items     []string
 }
 
-// desired is the collections Hardcover implies, holding only books CWA has.
+// desired is the collections Hardcover implies, holding only books CWA has, and
+// Next Up when the reader turned it on.
 // Names are made unique, since CWA returns an existing shelf by name and two
 // lists with one name would otherwise share it.
-func desired(lib hardcover.Library, byHardcover map[int][]string) []wantCollection {
+func desired(lib hardcover.Library, byHardcover map[int][]string, next []int, nextOn bool) []wantCollection {
 	uuids := func(ids []int) []string {
 		var out []string
 		for _, id := range ids {
@@ -96,6 +97,9 @@ func desired(lib hardcover.Library, byHardcover map[int][]string) []wantCollecti
 		out = append(out, wantCollection{key: "list:" + strconv.Itoa(l.ID), name: l.Name, items: uuids(l.BookIDs)})
 	}
 	out[0].items = uuids(everything)
+	if nextOn {
+		out = append(out, wantCollection{key: keyNextUp, name: "Next Up", items: uuids(next)})
+	}
 	used := map[string]bool{}
 	for i := range out {
 		name := out[i].name
@@ -111,7 +115,7 @@ func desired(lib hardcover.Library, byHardcover map[int][]string) []wantCollecti
 // collections keeps one Kobo collection per Hardcover shelf and list. It only
 // changes what it added itself, so a book someone adds by hand on the Kobo stays,
 // and a collection deleted on the Kobo is made again on the next run.
-func (s *Syncer) collections(ctx context.Context, a Account, lib hardcover.Library, byHardcover map[int][]string) error {
+func (s *Syncer) collections(ctx context.Context, a Account, wanted []wantCollection) error {
 	have, err := s.books.Collections(ctx, a.Key)
 	if err != nil {
 		return err
@@ -120,7 +124,7 @@ func (s *Syncer) collections(ctx context.Context, a Account, lib hardcover.Libra
 	for _, c := range have {
 		saved[c.Key] = c
 	}
-	for _, want := range desired(lib, byHardcover) {
+	for _, want := range wanted {
 		c, ok := saved[want.key]
 		delete(saved, want.key)
 		if (!ok || c.TagID == "" || c.TagID == dryTag) && len(want.items) == 0 {
@@ -139,9 +143,12 @@ func (s *Syncer) collections(ctx context.Context, a Account, lib hardcover.Libra
 		if err := s.books.DeleteCollection(ctx, a.Key, gone.Key); err != nil {
 			return err
 		}
-		if gone.Key == keyNotice {
+		switch gone.Key {
+		case keyNotice:
 			s.note(ctx, a, "collection "+gone.Name+" removed, Hardcover accepts the key again")
-		} else {
+		case keyNextUp:
+			s.note(ctx, a, "collection "+gone.Name+" removed, next up turned off")
+		default:
 			s.note(ctx, a, "collection "+gone.Name+" removed, gone from Hardcover")
 		}
 	}
